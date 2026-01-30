@@ -36,8 +36,7 @@ jobs:
       # --- SECURITY PHASE (SAST) ---
       - name: Run Go SAST (GoSec)
         id: sast_scan
-        # Using the official action is much more reliable than 'go install'
-        uses: securego/gosec@master
+        uses: securego/gosec@v2.20.0
         with:
           args: '-fmt sarif -out gosec-results.sarif ./...'
 
