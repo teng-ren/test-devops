@@ -16,10 +16,10 @@ type User struct {
 }
 
 type User_Auth struct {
-	ID 				int       `json:"id"`
-	Username  		string    `json:"username"`
-	PasswordHash 	string `json:passwordhash`
-	Role      		string    `json:"role"`
+	ID           int    `json:"id"`
+	Username     string `json:"username"`
+	PasswordHash string `json:"password_hash"`
+	Role         string `json:"role"`
 }
 
 type CreateUserRequest struct {
