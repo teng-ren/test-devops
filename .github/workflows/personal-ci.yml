@@ -32,14 +32,16 @@ jobs:
       # --- SECURITY PHASE (SAST) ---
       - name: Run Go SAST (GoSec)
         id: sast_scan
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
-          # Generate SARIF for the Security Tab; continue on error to allow upload
-          gosec -fmt sarif -out gosec-results.sarif ./... || true
+        # Using the official action is much more reliable than 'go install'
+        uses: securego/gosec@master
+        with:
+          args: '-fmt sarif -out gosec-results.sarif ./...'
 
       - name: Upload GoSec to Security Tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        # Updated to v4 to fix deprecation
+        uses: github/codeql-action/upload-sarif@v4
+        # Guard: Only upload if the file actually exists
+        if: always() && hashFiles('gosec-results.sarif') != ''
         with:
           sarif_file: gosec-results.sarif
           category: gosec
@@ -47,17 +49,20 @@ jobs:
       # --- SECURITY PHASE (SCA) ---
       - name: Run SCA (Trivy)
         id: sca_scan
-        uses: aquasec/trivy-action@v2
+        uses: aquasecurity/trivy-action@0.28.0
         with:
-          scan-type: fs
-          scan-ref: .
+          scan-type: 'fs'
+          scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          severity: CRITICAL,HIGH,MEDIUM
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '0'
 
       - name: Upload Trivy to Security Tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        # Updated to v4 to fix deprecation
+        uses: github/codeql-action/upload-sarif@v4
+        # Guard: Only upload if the file actually exists
+        if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: trivy-results.sarif
           category: trivy
