@@ -29,10 +29,9 @@ jobs:
 
       - name: Run Unit Tests
         id: unit_tests
-        # TEMPORARY BYPASS: No unit tests implemented yet in services - will be added in next sprint
-        run: echo "Unit tests will be implemented soon"
+        run: go test ./... -v
 
-
+    
       # --- SECURITY PHASE (SAST) ---
       - name: Run Go SAST (GoSec)
         id: sast_scan
