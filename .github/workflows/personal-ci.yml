@@ -23,7 +23,10 @@ jobs:
 
       - name: Run Linter
         id: linter
-        run: go vet ./...
+        run: |
+          cd services/api-gateway.service && go vet ./... && cd ../..
+          cd services/auth.service && go vet ./... && cd ../..
+
 
       - name: Run Unit Tests
         id: unit_tests
