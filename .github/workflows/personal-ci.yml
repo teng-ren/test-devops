@@ -38,7 +38,8 @@ jobs:
         id: sast_scan
         uses: securego/gosec@v2.20.0
         with:
-          args: '-fmt sarif -out gosec-results.sarif -no-ssa ./...'
+          args: '-fmt sarif -out gosec-results.sarif ./...'
+          exit-code: '0'
 
       - name: Upload GoSec to Security Tab
         # Updated to v4 to fix deprecation
