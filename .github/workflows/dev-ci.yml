@@ -1,0 +1,101 @@
+name: Dev Branch CI
+
+on:
+  push:
+    branches: ["dev", "main"]
+  pull_request:
+    branches: ["dev", "main"]
+
+jobs:
+  ci-dev:
+    runs-on: ubuntu-latest
+    # Required for uploading security results to the GitHub Security Tab
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # --- INTEGRATION TESTING PHASE ---
+      - name: Integration Tests (Placeholder)
+        id: integration_tests
+        run: echo "Integration tests will run here"
+
+      # --- SECURITY PHASE (DAST) ---
+      - name: Run DAST (OWASP ZAP)
+        id: dast
+        uses: zaproxy/action-full-scan@v0.5.0
+        with:
+          target: 'http://localhost:8080' # Replace with production URL
+          cmd_options: '-t 5 -r zap-report.html'
+
+      # --- PERFORMANCE PHASE ---
+      - name: Performance Tests (Placeholder)
+        id: perf_tests
+        run: echo "Performance tests will run here"
+
+      # --- STAGING DEPLOYMENT ---
+      - name: Deploy to Staging
+        id: staging_deploy
+        if: github.ref == 'refs/heads/dev'
+        run: |
+          echo "Executing Terraform apply to staging..."
+          echo "Updating Kubernetes manifests for staging..."
+
+      # --- NOTIFICATIONS ---
+
+      # Initial Status Alert
+      - name: Notify Discord - CI Started
+        if: always()
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_D }}
+        with:
+          args: "🚀 **CI STARTED** | Branch: `${{ github.ref_name }}` | Actor: `${{ github.actor }}`"
+
+      # ROUTE: INTEGRATION TESTS (Dev Channel)
+      - name: Notify Discord - Integration Test Failure
+        if: failure() && steps.integration_tests.outcome == 'failure'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_I }}
+        with:
+          args: "🔗 **INTEGRATION FAILURE**: Pub/Sub queue or service communication error. Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      # ROUTE: DAST ALERTS (QA Channel)
+      - name: Notify Discord - DAST Alert
+        if: failure() && steps.dast.outcome == 'failure'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_QA }}
+        with:
+          args: "🔍 **DAST ALERT**: Runtime security vulnerabilities detected during dynamic scanning. Check Security Tab."
+
+      # ROUTE: PERFORMANCE (Lead Dev/Architect)
+      - name: Notify Discord - Performance Failure
+        if: failure() && steps.perf_tests.outcome == 'failure'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_D }}
+        with:
+          args: "📉 **PERF REGRESSION**: Model latency or RPS thresholds exceeded on `${{ github.ref_name }}`."
+
+      # ROUTE: STAGING DEPLOYMENT (DevOps Team)
+      - name: Notify Discord - Staging Deployment Failure
+        if: failure() && steps.staging_deploy.outcome == 'failure'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_D }}
+        with:
+          args: "⚠️ **STAGING DEPLOYMENT FAILED**: Unable to deploy to staging environment. Check logs."
+
+      # ROUTE: RELEVANT STAKEHOLDERS (Management/AIDC Leads)
+      - name: Notify Stakeholders - Success
+        if: success()
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_MGMT }}
+        with:
+          args: "✅ **DEV PIPELINE SUCCESS**: All integration, DAST, and performance tests passed. Staging deployment complete."

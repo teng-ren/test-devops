@@ -1,0 +1,139 @@
+name: Personal Branch CI
+
+on:
+  push:
+    branches-ignore: []
+  pull_request:
+    branches-ignore: []
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go (for Backend/Auth)
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Run Linter
+        id: linter
+        run: go vet ./...
+
+      - name: Run Unit Tests
+        id: unit_tests
+        run: go test ./... -v
+
+      # --- SECURITY PHASE (SAST) ---
+      - name: Run Go SAST (GoSec)
+        id: sast_scan
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          # Generate SARIF for the Security Tab; continue on error to allow upload
+          gosec -fmt sarif -out gosec-results.sarif ./... || true
+
+      - name: Upload GoSec to Security Tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gosec-results.sarif
+          category: gosec
+
+      # --- SECURITY PHASE (SCA) ---
+      - name: Run SCA (Trivy)
+        id: sca_scan
+        uses: aquasec/trivy-action@v2
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: CRITICAL,HIGH,MEDIUM
+
+      - name: Upload Trivy to Security Tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+
+      - name: Notify Discord - CI Started
+        if: always()
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_P }}
+        with:
+          args: |
+            **CI Started on Feature Branch**
+            **User:** ${{ github.actor }}
+            **Branch:** `${{ github.ref_name }}`
+            **Commit:** `${{ github.event.head_commit.message }}`
+
+      - name: Notify Discord - Linter Failed
+        if: failure() && steps.linter.outcome == 'failure'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_P }}
+        with:
+          args: |
+            **CI FAILED: Linting Error**
+            **Developer:** ${{ github.actor }}
+            **Branch:** `${{ github.ref_name }}`
+            **Error:** Code linting (go vet) failed. 
+            **Action:** Please fix linting issues before opening a PR to `dev`.
+            **Logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Notify Discord - Unit Tests Failed
+        if: failure() && steps.unit_tests.outcome == 'failure'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_U }}
+        with:
+          args: |
+            **CI FAILED: Unit Tests Failed**
+            **Developer:** ${{ github.actor }}
+            **Branch:** `${{ github.ref_name }}`
+            **Error:** Unit tests failed. 
+            **Action:** Please fix failing tests before opening a PR to `dev`.
+            **Logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Notify Discord - SAST Failed
+        if: failure() && steps.sast_scan.outcome == 'failure'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_QA }}
+        with:
+          args: |
+            **CI FAILED: SAST Security Scan Failed**
+            **Developer:** ${{ github.actor }}
+            **Branch:** `${{ github.ref_name }}`
+            **Error:** GoSec detected security vulnerabilities in code. 
+            **Action:** Review Security Tab and fix vulnerabilities before opening a PR to `dev`.
+            **Logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Notify Discord - SCA Failed
+        if: failure() && steps.sca_scan.outcome == 'failure'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_QA }}
+        with:
+          args: |
+            **CI FAILED: SCA Dependency Scan Failed**
+            **Developer:** ${{ github.actor }}
+            **Branch:** `${{ github.ref_name }}`
+            **Error:** Trivy detected vulnerable dependencies. 
+            **Action:** Update dependencies before opening a PR to `dev`.
+            **Logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Notify Discord - CI Success
+        if: success()
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_P }}
+        with:
+          args: "**CI Passed:** `${{ github.ref_name }}` is ready for a PR."

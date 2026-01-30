@@ -1,0 +1,100 @@
+version: "3.9"
+services:
+  # Database
+  db:
+    image: postgres:15-alpine
+    container_name: postgres-db
+    environment:
+       POSTGRES_DB: ${POSTGRES_DB}
+       POSTGRES_USER: ${POSTGRES_USER}
+       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+       # Default user and admin
+       DEFAULT_TESTUSER_USERNAME: ${DEFAULT_TESTUSER_USERNAME}
+       DEFAULT_TESTUSER_PASSWORD: ${DEFAULT_TESTUSER_PASSWORD}
+       DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME}
+       DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD}
+    volumes:
+       - postgres_data:/var/lib/postgresql/data
+       - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-network
+
+  # Auth Microservice
+  auth:
+    build: ./services/auth.service/
+    container_name: auth-service
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: ${POSTGRES_HOST}
+      DB_PORT: ${POSTGRES_PORT}
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    networks:
+      - backend-network
+
+  # # Admin Microservice
+  # admin:
+  #   build: ./services/admin.service/
+  #   container_name: admin-service
+  #   depends_on:
+  #     - auth
+  #     - db
+  #   environment:
+  #     DB_HOST: ${POSTGRES_HOST}
+  #     DB_PORT: ${POSTGRES_PORT}
+  #     DB_NAME: ${POSTGRES_DB}
+  #     DB_USER: ${POSTGRES_USER}
+  #     DB_PASSWORD: ${POSTGRES_PASSWORD}
+  #     JWT_SECRET: ${JWT_SECRET}
+  #     AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
+  #   networks:
+  #     - backend-network
+
+  # API Gateway
+  api-gateway:
+    build: ./services/api-gateway.service/
+    container_name: api-gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      - auth
+      # - admin
+    environment:
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
+      ADMIN_SERVICE_URL: ${ADMIN_SERVICE_URL}
+    networks:
+      - frontend-network
+      - backend-network
+
+  # Frontend Application
+  frontend:
+    build: ./app
+    container_name: frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: ${VITE_API_URL}
+    networks:
+      - frontend-network
+
+volumes:
+  postgres_data:
+
+networks:
+  frontend-network:
+    driver: bridge
+    name: public-network
+  backend-network:
+    driver: bridge
+    name: private-network
+    internal: true

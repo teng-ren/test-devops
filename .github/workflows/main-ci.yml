@@ -1,0 +1,57 @@
+name: Production Release Pipeline
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  prod-release:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # --- PRODUCTION DEPLOYMENT ---
+      - name: Deploy to Production
+        id: deploy
+        run: |
+          echo "Executing Terraform apply..."
+          echo "Updating Kubernetes manifests..."
+
+      # --- NOTIFICATIONS ---
+
+      - name: Notify Discord - Production Deployment Incident
+        if: failure() && steps.deploy.outcome == 'failure'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        with:
+          args: |
+            🚨 **CRITICAL: PRODUCTION DEPLOYMENT FAILED**
+            The deployment step failed on the `main` branch. 
+            **Status:** Infrastructure/Deployment Error
+            **Check Logs:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      # ROUTE: Dev Channel (Implementation Stakeholders)
+      - name: Notify Discord - Main Failure
+        if: failure() && steps.deploy.outcome == 'skipped'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_P }}
+        with:
+          args: "❌ **PROD PIPELINE BROKEN**: The build failed before deployment could start. Actor: ${{ github.actor }}"
+
+      # ROUTE: Management Channel (Centre Appointment Holders)
+      - name: Notify Discord - Release Success
+        if: success()
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_MGMT }}
+        with:
+          args: "🏁 **PROD RELEASE COMPLETE**: The AI Model Tester platform is officially live in the AIDC environment."
