@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+data:
+  01-schema.sql: |
+    -- Enable pgcrypto for password hashing
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+    -- Create users table for authentication
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(255) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role VARCHAR(20) NOT NULL DEFAULT 'user',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+  seed.sh: |
+    #!/bin/bash
+
+    PGPASSWORD=$POSTGRES_PASSWORD psql -U $POSTGRES_USER -d $POSTGRES_DB << EOF
+    INSERT INTO users (username, password_hash, role) 
+    VALUES ('$DEFAULT_TESTUSER_USERNAME', crypt('$DEFAULT_TESTUSER_PASSWORD', gen_salt('bf')), 'user')
+    ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash;
+
+    INSERT INTO users (username, password_hash, role) 
+    VALUES ('$DEFAULT_ADMIN_USERNAME', crypt('$DEFAULT_ADMIN_PASSWORD', gen_salt('bf')), 'admin')
+    ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash;
+    EOF
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-db
+  labels:
+    app: postgres-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-db
+  template:
+    metadata:
+      labels:
+        app: postgres-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_DB
+              value: "${POSTGRES_DB}"
+            - name: POSTGRES_USER
+              value: "${POSTGRES_USER}"
+            - name: POSTGRES_PASSWORD
+              value: "${POSTGRES_PASSWORD}"
+            - name: DEFAULT_TESTUSER_USERNAME
+              value: "${DEFAULT_TESTUSER_USERNAME}"
+            - name: DEFAULT_TESTUSER_PASSWORD
+              value: "${DEFAULT_TESTUSER_PASSWORD}"
+            - name: DEFAULT_ADMIN_USERNAME
+              value: "${DEFAULT_ADMIN_USERNAME}"
+            - name: DEFAULT_ADMIN_PASSWORD
+              value: "${DEFAULT_ADMIN_PASSWORD}"
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - "${POSTGRES_USER}"
+                - -d
+                - "${POSTGRES_DB}"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: init-scripts
+          configMap:
+            name: postgres-init-scripts
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-auth-to-postgres
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: auth-service
+      ports:
+        - protocol: TCP
+          port: 5432

@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  labels:
+    app: api-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: ${API_GATEWAY_IMAGE}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: ${API_GATEWAY_PORT}
+          env:
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service:8001"
+            - name: ADMIN_SERVICE_URL
+              value: "http://auth-service:8001"
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "256m"
+            requests:
+              memory: "64Mi"
+              cpu: "128m"
+          readinessProbe:
+            tcpSocket:
+              port: ${API_GATEWAY_PORT}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: ${API_GATEWAY_PORT}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 30

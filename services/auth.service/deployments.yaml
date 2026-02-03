@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      serviceAccountName: auth-service-account
+      containers:
+        - name: auth-service
+          image: ${AUTH_SERVICE_IMAGE}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: ${AUTH_SERVICE_PORT}
+          env:
+            - name: DB_HOST
+              value: "postgres-service"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "${POSTGRES_DB}"
+            - name: DB_USER
+              value: "${POSTGRES_USER}"
+            - name: DB_PASSWORD
+              value: "${POSTGRES_PASSWORD}"
+            - name: JWT_SECRET
+              value: "${JWT_SECRET}"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service:${AUTH_SERVICE_PORT}"
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "256m"
+            requests:
+              memory: "64Mi"
+              cpu: "128m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: ${AUTH_SERVICE_PORT}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: ${AUTH_SERVICE_PORT}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: ${AUTH_SERVICE_PORT}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 30

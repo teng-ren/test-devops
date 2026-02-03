@@ -1,0 +1,319 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-downloader
+  annotations:
+    gke-gcsfuse/volumes: "true"
+spec:
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+        gke-gcsfuse/ephemeral-storage-request: "50Mi"
+        gke-gcsfuse/ephemeral-storage-limit: "1Gi"
+    spec:
+      serviceAccountName: llm-downloader-service-account
+      restartPolicy: OnFailure
+      containers:
+      - name: downloader
+        image: curlimages/curl:8.6.0
+        securityContext:
+          runAsUser: 0
+        command: ["/bin/sh", "-c"]
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+        args:
+          - |
+            set -e # Fail fast
+            
+            download_model() {
+              URL=$1
+              FILE=$2
+              echo "Checking $FILE..."
+              if [ -f "$FILE" ] && [ "$(head -c 4 "$FILE")" = "GGUF" ]; then
+                echo "$FILE exists and header looks valid. Skipping."
+                return
+              fi
+              
+              echo "Downloading $FILE from $URL..."
+              curl -L --fail --retry 5 --retry-delay 10 --connect-timeout 30 --max-time 3600 -o "$FILE" "$URL"
+              echo "Download complete: $FILE"
+            }
+
+            mkdir -p /models
+            
+            # Download Gemma 3
+            download_model "https://huggingface.co/unsloth/gemma-3-270m-it-GGUF/resolve/main/gemma-3-270m-it-Q4_0.gguf" "/models/gemma-3-270m-it-Q4_0.gguf"
+            
+            # Download Qwen 3
+            download_model "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q8_0.gguf" "/models/Qwen3-0.6B-Q8_0.gguf"
+            
+            # Download TinyLlama
+            download_model "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf" "/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+            
+            echo "All models downloaded successfully."
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+      volumes:
+      - name: model-storage
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ${LLM_BUCKET_NAME}
+            mountOptions: "implicit-dirs"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemma3
+  annotations:
+    gke-gcsfuse/volumes: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gemma3
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+        gke-gcsfuse/ephemeral-storage-request: "50Mi"
+        gke-gcsfuse/ephemeral-storage-limit: "1Gi"
+      labels:
+        app: gemma3
+    spec:
+      serviceAccountName: llm-service-account
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: llama-cpp
+        image: ghcr.io/ggml-org/llama.cpp:server-b7880
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            # Wait for model file to exist (Job completion check fallback)
+            MODEL="/models/gemma-3-270m-it-Q4_0.gguf"
+            while [ ! -f "$MODEL" ]; do
+              echo "Waiting for model $MODEL..."
+              sleep 10
+            done
+            
+            ./llama-server \
+              --model "$MODEL" \
+              --host 0.0.0.0 \
+              --port 8000 \
+              --ctx-size 4096 \
+              --threads 2
+        ports:
+          - containerPort: 8000
+        resources:
+          requests:
+            cpu: "1"
+            memory: "4Gi"
+          limits:
+            cpu: "1"
+            memory: "4Gi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 15
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          failureThreshold: 30
+          periodSeconds: 10
+        volumeMounts:
+          - name: model-storage
+            mountPath: /models
+            readOnly: true
+      volumes:
+      - name: model-storage
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ${LLM_BUCKET_NAME}
+            mountOptions: "implicit-dirs"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen3
+  annotations:
+    gke-gcsfuse/volumes: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qwen3
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/volumes: "true"
+        gke-gcsfuse/ephemeral-storage-request: "50Mi"
+        gke-gcsfuse/ephemeral-storage-limit: "1Gi"
+      labels:
+        app: qwen3
+    spec:
+      serviceAccountName: llm-service-account
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: llama-cpp
+        image: ghcr.io/ggml-org/llama.cpp:server-b7880
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            MODEL="/models/Qwen3-0.6B-Q8_0.gguf"
+            while [ ! -f "$MODEL" ]; do
+              echo "Waiting for model $MODEL..."
+              sleep 10
+            done
+
+            ./llama-server \
+              --model "$MODEL" \
+              --host 0.0.0.0 \
+              --port 8000 \
+              --ctx-size 4096 \
+              --threads 2
+        ports:
+          - containerPort: 8000
+        resources:
+          requests:
+            cpu: "1"
+            memory: "4Gi"
+          limits:
+            cpu: "1"
+            memory: "4Gi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 15
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          failureThreshold: 30
+          periodSeconds: 10
+        volumeMounts:
+          - name: model-storage
+            mountPath: /models
+            readOnly: true
+      volumes:
+      - name: model-storage
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ${LLM_BUCKET_NAME}
+            mountOptions: "implicit-dirs"
+
+# ---
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: tinyllama
+#   annotations:
+#     gke-gcsfuse/volumes: "true"
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: tinyllama
+#   template:
+#     metadata:
+#       annotations:
+#         gke-gcsfuse/volumes: "true"
+#         gke-gcsfuse/ephemeral-storage-request: "50Mi"
+#         gke-gcsfuse/ephemeral-storage-limit: "1Gi"
+#       labels:
+#         app: tinyllama
+#     spec:
+#       serviceAccountName: llm-service-account
+#       securityContext:
+#         runAsUser: 1000
+#         runAsGroup: 1000
+#         fsGroup: 1000
+#       containers:
+#       - name: llama-cpp
+#         image: ghcr.io/ggml-org/llama.cpp:server-b7880
+#         command: ["/bin/sh", "-c"]
+#         args:
+#           - |
+#             MODEL="/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+#             while [ ! -f "$MODEL" ]; do
+#               echo "Waiting for model $MODEL..."
+#               sleep 10
+#             done
+
+#             ./llama-server \
+#               --model "$MODEL" \
+#               --host 0.0.0.0 \
+#               --port 8000 \
+#               --ctx-size 4096 \
+#               --threads 2
+#         ports:
+#           - containerPort: 8000
+#         resources:
+#           requests:
+#             cpu: "1"
+#             memory: "4Gi"
+#           limits:
+#             cpu: "1"
+#             memory: "4Gi"
+#         readinessProbe:
+#           httpGet:
+#             path: /health
+#             port: 8000
+#           initialDelaySeconds: 5
+#           periodSeconds: 10
+#         livenessProbe:
+#           httpGet:
+#             path: /health
+#             port: 8000
+#           initialDelaySeconds: 60
+#           periodSeconds: 15
+#         startupProbe:
+#           httpGet:
+#             path: /health
+#             port: 8000
+#           failureThreshold: 30
+#           periodSeconds: 10
+#         volumeMounts:
+#           - name: model-storage
+#             mountPath: /models
+#             readOnly: true
+#       volumes:
+#       - name: model-storage
+#         csi:
+#           driver: gcsfuse.csi.storage.gke.io
+#           volumeAttributes:
+#             bucketName: ${LLM_BUCKET_NAME}
+#             mountOptions: "implicit-dirs"

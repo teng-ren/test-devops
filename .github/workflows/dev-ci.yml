@@ -18,6 +18,33 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # --- START SERVICES FOR DAST ---
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          POSTGRES_DB=app_db
+          POSTGRES_USER=app_user
+          POSTGRES_PASSWORD=app_password
+          POSTGRES_HOST=db
+          POSTGRES_PORT=5432
+          DEFAULT_TESTUSER_USERNAME=testuser
+          DEFAULT_TESTUSER_PASSWORD=testpass
+          DEFAULT_ADMIN_USERNAME=admin
+          DEFAULT_ADMIN_PASSWORD=adminpass
+          JWT_SECRET=test-secret-key-for-ci
+          AUTH_SERVICE_URL=http://auth:8001
+          ADMIN_SERVICE_URL=http://auth:8001
+          VITE_API_URL=http://localhost:8000
+          EOF
+
+      - name: Build and Start Services
+        run: docker-compose up -d --build
+
+      - name: Wait for Services
+        run: |
+          echo "Waiting for API Gateway on port 8000..."
+          timeout 60s bash -c 'until curl -s http://localhost:8000; do sleep 2; done'
+
       # --- INTEGRATION TESTING PHASE ---
       - name: Integration Tests (Placeholder)
         id: integration_tests
@@ -26,11 +53,15 @@ jobs:
       # --- SECURITY PHASE (DAST) ---
       - name: Run DAST (OWASP ZAP)
         id: dast
-        uses: zaproxy/action-full-scan@v0.7.0
+        uses: zaproxy/action-full-scan@v0.12.0
         with:
-          target: 'http://localhost:8080'
-          cmd_options: '-m 5'
+          target: 'http://localhost:8000'
+          cmd_options: '-a'
         continue-on-error: true
+
+      - name: Shutdown Services
+        if: always()
+        run: docker-compose down
 
       # --- PERFORMANCE PHASE ---
       - name: Performance Tests (Placeholder)

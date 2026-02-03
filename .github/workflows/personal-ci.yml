@@ -37,7 +37,7 @@ jobs:
         id: sast_scan
         uses: securego/gosec@v2.20.0
         with:
-          args: '-no-fail -fmt sarif -out gosec-results.sarif ./...'
+          args: '-fmt sarif -out gosec-results.sarif ./...'
 
       - name: Upload GoSec to Security Tab
         # Updated to v4 to fix deprecation
@@ -58,7 +58,6 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM'
-          exit-code: '0'
 
       - name: Upload Trivy to Security Tab
         # Updated to v4 to fix deprecation
