@@ -38,7 +38,7 @@ jobs:
           EOF
 
       - name: Build and Start Services
-        run: docker-compose up -d --build
+        run: docker compose up -d --build
 
       - name: Wait for Services
         run: |
@@ -61,7 +61,7 @@ jobs:
 
       - name: Shutdown Services
         if: always()
-        run: docker-compose down
+        run: docker compose down
 
       # --- PERFORMANCE PHASE ---
       - name: Performance Tests (Placeholder)
