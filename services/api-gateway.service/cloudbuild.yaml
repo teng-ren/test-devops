@@ -1,0 +1,33 @@
+steps:
+  # Read version from VERSION file
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        VERSION=$$(cat VERSION)
+        echo "Building api-gateway version: $$VERSION"
+        docker build -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api-gateway:$$VERSION \
+                     -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api-gateway:latest .
+    id: 'Build API Gateway'
+
+  # Push versioned tag
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        VERSION=$$(cat VERSION)
+        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api-gateway:$$VERSION
+    id: 'Push Versioned Tag'
+    waitFor: ['Build API Gateway']
+
+  # Push latest tag
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api-gateway:latest']
+    id: 'Push Latest Tag'
+    waitFor: ['Build API Gateway']
+
+substitutions:
+  _REGION: 'us-central1'
+  _REPOSITORY: 'devops-test-repo'

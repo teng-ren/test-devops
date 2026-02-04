@@ -18,7 +18,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- START SERVICES FOR DAST ---
+      # --- START SERVICES FOR DAST (Using Kubernetes) ---
+      - name: Set up Kind cluster
+        uses: helm/kind-action@v1.7.0
+        with:
+          config: kind-config.yaml
+          cluster_name: dev-cluster
+
       - name: Create .env file
         run: |
           cat > .env << EOF
@@ -38,7 +44,14 @@ jobs:
           EOF
 
       - name: Build and Start Services
-        run: docker compose up -d --build
+        run: |
+          docker build -t auth:latest ./services/auth.service/
+          docker build -t api-gateway:latest ./services/api-gateway.service/
+          docker build -t frontend:latest ./app
+          kind load docker-image auth:latest api-gateway:latest frontend:latest --name dev-cluster
+          kubectl apply -f k8s-namespace.yaml k8s-secrets.yaml k8s-postgres.yaml k8s-auth-service.yaml k8s-api-gateway.yaml k8s-frontend.yaml
+          kubectl wait --for=condition=Ready pod -l app=postgres -n dev --timeout=300s || true
+          kubectl wait --for=condition=Ready pod -l app=api-gateway -n dev --timeout=300s || true
 
       - name: Wait for Services
         run: |

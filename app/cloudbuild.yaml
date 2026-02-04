@@ -1,0 +1,33 @@
+steps:
+  # Read version from VERSION file
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        VERSION=$$(cat VERSION)
+        echo "Building frontend version: $$VERSION"
+        docker build -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/frontend:$$VERSION \
+                     -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/frontend:latest .
+    id: 'Build Frontend'
+
+  # Push versioned tag
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        VERSION=$$(cat VERSION)
+        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/frontend:$$VERSION
+    id: 'Push Versioned Tag'
+    waitFor: ['Build Frontend']
+
+  # Push latest tag
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/frontend:latest']
+    id: 'Push Latest Tag'
+    waitFor: ['Build Frontend']
+
+substitutions:
+  _REGION: 'us-central1'
+  _REPOSITORY: 'devops-test-repo'

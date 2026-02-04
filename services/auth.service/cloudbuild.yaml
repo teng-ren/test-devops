@@ -1,0 +1,33 @@
+steps:
+  # Read version from VERSION file
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        VERSION=$$(cat VERSION)
+        echo "Building auth-service version: $$VERSION"
+        docker build -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/auth-service:$$VERSION \
+                     -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/auth-service:latest .
+    id: 'Build Auth Service'
+
+  # Push versioned tag
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        VERSION=$$(cat VERSION)
+        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/auth-service:$$VERSION
+    id: 'Push Versioned Tag'
+    waitFor: ['Build Auth Service']
+
+  # Push latest tag
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/auth-service:latest']
+    id: 'Push Latest Tag'
+    waitFor: ['Build Auth Service']
+
+substitutions:
+  _REGION: 'us-central1'
+  _REPOSITORY: 'devops-test-repo'

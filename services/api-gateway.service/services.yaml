@@ -4,6 +4,7 @@ metadata:
   name: api-gateway
 spec:
   type: LoadBalancer
+  loadBalancerIP: ${API_GATEWAY_IP}
   selector:
     app: api-gateway
   ports:
