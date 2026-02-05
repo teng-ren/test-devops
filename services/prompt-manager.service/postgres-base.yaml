@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chats-postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chats-postgres-db
+  labels:
+    app: chats-postgres-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chats-postgres-db
+  template:
+    metadata:
+      labels:
+        app: chats-postgres-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_DB
+              value: "${CHATS_POSTGRES_DB}"
+            - name: POSTGRES_USER
+              value: "${CHATS_POSTGRES_USER}"
+            - name: POSTGRES_PASSWORD
+              value: "${CHATS_POSTGRES_PASSWORD}"
+          volumeMounts:
+            - name: chats-postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - "${CHATS_POSTGRES_USER}"
+                - -d
+                - "${CHATS_POSTGRES_DB}"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: chats-postgres-data
+          persistentVolumeClaim:
+            claimName: chats-postgres-pvc
+        - name: init-scripts
+          configMap:
+            name: chats-postgres-init-scripts
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-pm-to-chats-postgres
+spec:
+  podSelector:
+    matchLabels:
+      app: chats-postgres-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prompt-manager-service
+      ports:
+        - protocol: TCP
+          port: 5432

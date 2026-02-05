@@ -1,9 +1,11 @@
 version: "3.9"
 services:
-  # Database
-  db:
+  # Auth Database
+  auth-db:
     image: postgres:15-alpine
-    container_name: postgres-db
+    container_name: auth-postgres-db
+    ports:
+      - "${POSTGRES_PORT}:5432"
     environment:
        POSTGRES_DB: ${POSTGRES_DB}
        POSTGRES_USER: ${POSTGRES_USER}
@@ -16,21 +18,68 @@ services:
        DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD}
     volumes:
        - postgres_data:/var/lib/postgresql/data
-       - ./db/init:/docker-entrypoint-initdb.d
+       - ./services/auth.service/db:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - backend-network
+      - auth-network
+      - frontend-network
+  chats_db:
+    image: postgres:15-alpine
+    container_name: chats-db
+    environment:
+      POSTGRES_DB: ${CHATS_POSTGRES_DB}
+      POSTGRES_USER: ${CHATS_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${CHATS_POSTGRES_PASSWORD}
+    ports:
+      - "${CHATS_POSTGRES_PORT}:5432"
+    volumes:
+      - chats_data:/var/lib/postgresql/data
+      - ./services/prompt-manager.service/db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CHATS_POSTGRES_USER} -d ${CHATS_POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - llm-network
+
+  # Pub/Sub Emulator for local development
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    container_name: pubsub-emulator
+    command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085
+    ports:
+      - "8085:8085"
+    networks:
+      - llm-network
+
+  # Mock LLM Services (for local development)
+  gemma3:
+    build: ./k8s-local/mock-llm.service/
+    container_name: mock-gemma3
+    environment:
+      MODEL_NAME: gemma3
+    networks:
+      - llm-network
+
+  qwen3:
+    build: ./k8s-local/mock-llm.service/
+    container_name: mock-qwen3
+    environment:
+      MODEL_NAME: qwen3
+    networks:
+      - llm-network
 
   # Auth Microservice
   auth:
     build: ./services/auth.service/
     container_name: auth-service
     depends_on:
-      db:
+      auth-db:
         condition: service_healthy
     environment:
       DB_HOST: ${POSTGRES_HOST}
@@ -40,25 +89,38 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
     networks:
-      - backend-network
-
-  # # Admin Microservice
-  # admin:
-  #   build: ./services/admin.service/
-  #   container_name: admin-service
-  #   depends_on:
-  #     - auth
-  #     - db
-  #   environment:
-  #     DB_HOST: ${POSTGRES_HOST}
-  #     DB_PORT: ${POSTGRES_PORT}
-  #     DB_NAME: ${POSTGRES_DB}
-  #     DB_USER: ${POSTGRES_USER}
-  #     DB_PASSWORD: ${POSTGRES_PASSWORD}
-  #     JWT_SECRET: ${JWT_SECRET}
-  #     AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
-  #   networks:
-  #     - backend-network
+      - auth-network
+  
+  # Prompt Manager Microservice
+  prompt-manager:
+    build: ./services/prompt-manager.service/
+    container_name: prompt-manager
+    depends_on:
+      chats_db:
+        condition: service_healthy
+      pubsub-emulator:
+        condition: service_started
+      auth:
+        condition: service_started
+      gemma3:
+        condition: service_started
+      qwen3:
+        condition: service_started
+    environment:
+      DB_HOST: ${CHATS_POSTGRES_HOST}
+      DB_PORT: ${CHATS_POSTGRES_PORT}
+      DB_NAME: ${CHATS_POSTGRES_DB}
+      DB_USER: ${CHATS_POSTGRES_USER}
+      DB_PASSWORD: ${CHATS_POSTGRES_PASSWORD}
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: local-project
+      AUTH_SERVICE_URL: http://auth:8001
+      GEMMA3_SERVICE_URL: http://gemma3:8000
+      QWEN3_SERVICE_URL: http://qwen3:8000
+    ports:
+      - "8002:8002"
+    networks:
+      - llm-network
 
   # API Gateway
   api-gateway:
@@ -68,33 +130,45 @@ services:
       - "8000:8000"
     depends_on:
       - auth
+      - prompt-manager
       # - admin
     environment:
       AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
       ADMIN_SERVICE_URL: ${ADMIN_SERVICE_URL}
+      PROMPT_MANAGER_SERVICE_URL: http://prompt-manager:8002
     networks:
       - frontend-network
-      - backend-network
+      - auth-network
+      - llm-network
 
   # Frontend Application
   frontend:
-    build: ./app
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
     container_name: frontend
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: ${VITE_API_URL}
+      PORT: 5173
     networks:
       - frontend-network
 
 volumes:
   postgres_data:
+  chats_data:
 
 networks:
   frontend-network:
     driver: bridge
     name: public-network
-  backend-network:
+  auth-network:
     driver: bridge
-    name: private-network
+    name: auth-network
+    internal: true
+  llm-network:
+    driver: bridge
+    name: llm-network
     internal: true

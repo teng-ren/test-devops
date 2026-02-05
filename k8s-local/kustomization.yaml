@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Local testing resources (Pub/Sub emulator, mock LLMs)
+resources:
+  - pubsub-emulator.yaml
+  - mock-llm.yaml

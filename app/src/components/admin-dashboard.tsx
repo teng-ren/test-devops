@@ -27,6 +27,7 @@ import {
   Trash2,
   Users,
   Shield,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { User } from "@/lib/types"
@@ -55,7 +56,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const validateToken = async () => {
       const token = localStorage.getItem('token')
-      
+
       if (!token) {
         setAuthError("Please login to access admin dashboard")
         setTimeout(() => navigate('/'), 2000)
@@ -110,9 +111,8 @@ export default function AdminDashboard() {
     try {
       const usersData = await adminApi.getUsers()
       setUsers(usersData)
-    } catch (error) {
+    } catch {
       setApiError("Failed to fetch users")
-      alert("Failed to fetch users")
     } finally {
       setIsUsersLoading(false)
     }
@@ -130,9 +130,8 @@ export default function AdminDashboard() {
       setIsCreateDialogOpen(false)
       setFormData({ username: "", password: "", role: "user" })
       setApiError("")
-    } catch (error) {
+    } catch {
       setApiError("Failed to create user")
-      alert("Failed to create user")
     }
   }
 
@@ -144,9 +143,8 @@ export default function AdminDashboard() {
       setIsEditDialogOpen(false)
       setSelectedUser(null)
       setApiError("")
-    } catch (error) {
+    } catch {
       setApiError("Failed to update user")
-      alert("Failed to update user")
     }
   }
 
@@ -158,9 +156,8 @@ export default function AdminDashboard() {
       setIsDeleteDialogOpen(false)
       setSelectedUser(null)
       setApiError("")
-    } catch (error) {
+    } catch {
       setApiError("Failed to delete user")
-      alert("Failed to delete user")
     }
   }
 
@@ -188,28 +185,19 @@ export default function AdminDashboard() {
     })
   }
 
-  const stats = [
-    {
-      title: "Total Users",
-      value: users.length,
-      icon: Users,
-      change: "+12%",
-    }
-  ]
-
   return (
-    <div className="min-h-screen min-w-screen bg-background">
+    <div className="min-h-screen w-full bg-background">
       {isLoading && (
-        <div className="flex items-center justify-center min-h-screen">
+        <div className="flex min-h-screen items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
             <p className="text-muted-foreground">Validating authentication...</p>
           </div>
         </div>
       )}
 
       {authError && !isLoading && (
-        <div className="flex items-center justify-center min-h-screen p-4">
+        <div className="flex min-h-screen items-center justify-center p-4">
           <Alert variant="destructive" className="max-w-md">
             <AlertDescription>{authError}</AlertDescription>
           </Alert>
@@ -218,309 +206,278 @@ export default function AdminDashboard() {
 
       {!isLoading && !authError && isAuthenticated && (
         <>
-      <header className="sticky top-0 z-50 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-        <div className="flex h-16 items-center justify-between px-6">
-          <div className="flex items-center gap-4">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700">
-                <Bot className="h-5 w-5 text-primary-foreground" /> 
+          {/* Header */}
+          <header className="sticky top-0 z-50 border-b border-border bg-card">
+            <div className="flex h-14 items-center justify-between px-4">
+              <div className="flex items-center gap-3">
+                <Link to="/" className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+                    <Bot className="h-4 w-4 text-primary-foreground" />
+                  </div>
+                  <span className="font-semibold text-foreground">AIDC</span>
+                </Link>
+                <Badge variant="outline" className="border-primary/50 text-primary">
+                  <Shield className="mr-1 h-3 w-3" />
+                  Admin
+                </Badge>
               </div>
-              <span className="text-xl font-semibold text-black">AIDC</span>
-            </Link>
-            <Badge variant="outline" className="border-primary/50 text-primary">
-              <Shield className="mr-1 h-3 w-3" />
-              Admin
-            </Badge>
-          </div>
-          <nav className="flex items-center gap-2">
-            <Link to="/user">
-              <Button variant="outline" className="text-white hover:bg-white/20 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700">
-                User Dashboard
-              </Button>
-            </Link>
-          </nav>
-        </div>
-      </header>
-
-      <main className="p-6">
-        <div className="mx-auto max-w-7xl space-y-6">
-          {apiError && (
-            <Alert variant="destructive">
-              <AlertDescription>{apiError}</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">User Management</h1>
-              <p className="text-muted-foreground">Manage users, permissions, and access controls</p>
+              <Link to="/user">
+                <Button variant="outline" size="sm">
+                  User Dashboard
+                </Button>
+              </Link>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setFormData({ username: "", password: "", role: "user" })
-                setIsCreateDialogOpen(true)
-              }}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              <span className="text-white hover:text-black bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700">Add User</span>
-            </Button>
-          </div>
+          </header>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {stats.map((stat, i) => (
-              <Card key={i} className="border-border bg-card">
+          {/* Main Content */}
+          <main className="p-6">
+            <div className="mx-auto max-w-6xl space-y-6">
+              {apiError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{apiError}</AlertDescription>
+                </Alert>
+              )}
+
+              {/* Page Header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold text-foreground">User Management</h1>
+                  <p className="text-sm text-muted-foreground">
+                    Manage users, permissions, and access controls
+                  </p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setFormData({ username: "", password: "", role: "user" })
+                    setIsCreateDialogOpen(true)
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add User
+                </Button>
+              </div>
+
+              {/* Stats Card */}
+              <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
-                  <stat.icon className="h-4 w-4 text-primary" />
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Total Users
+                  </CardTitle>
+                  <Users className="h-4 w-4 text-primary" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-card-foreground">{stat.value}</div>
-                  <p className="text-xs text-primary">{stat.change} from last month</p>
+                  <div className="text-2xl font-bold text-foreground">{users.length}</div>
                 </CardContent>
               </Card>
-            ))}
-          </div>
 
-          {/* Users Table */}
-          <Card className="border-border bg-card">
-            <CardHeader>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle className="text-card-foreground">All Users</CardTitle>
-                <div className="relative w-full sm:w-72">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              {/* Users Table */}
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <CardTitle>All Users</CardTitle>
+                    <div className="relative w-full sm:w-64">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Search users..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {isUsersLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                  ) : (
+                    <>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Username</TableHead>
+                            <TableHead>Role</TableHead>
+                            <TableHead>Created At</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredUsers.map((user) => (
+                            <TableRow key={user.id}>
+                              <TableCell className="font-medium">{user.username}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={user.role === "admin" ? "default" : "secondary"}
+                                  className={cn(user.role === "admin" && "bg-primary")}
+                                >
+                                  {user.role}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {formatDate(user.created_at)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={() => openEditDialog(user)}
+                                      className="cursor-pointer"
+                                    >
+                                      <Edit className="mr-2 h-4 w-4" />
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => openDeleteDialog(user)}
+                                      className="cursor-pointer text-destructive focus:text-destructive"
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      {filteredUsers.length === 0 && (
+                        <div className="py-12 text-center">
+                          <Users className="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
+                          <p className="text-muted-foreground">No users found</p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </main>
+
+          {/* Create User Dialog */}
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New User</DialogTitle>
+                <DialogDescription>
+                  Add a new user to the platform with username, password, and role.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="username">Username</Label>
                   <Input
-                    placeholder="Search users..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 border-border bg-background text-foreground placeholder:text-muted-foreground"
+                    id="username"
+                    value={formData.username}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    placeholder="Enter username"
                   />
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isUsersLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <div className="grid gap-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Enter password"
+                  />
                 </div>
-              ) : (
-                <>
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-border hover:bg-transparent">
-                        <TableHead className="text-muted-foreground">Username</TableHead>
-                        <TableHead className="text-muted-foreground">Role</TableHead>
-                        <TableHead className="text-muted-foreground">Created At</TableHead>
-                        <TableHead className="text-right text-muted-foreground">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredUsers.map((user) => (
-                        <TableRow key={user.id} className="border-border">
-                          <TableCell className="font-medium text-foreground">{user.username}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                user.role === "admin" ? "default" :
-                                user.role === "premium" ? "secondary" : "outline"
-                              }
-                              className={cn(user.role === "admin" && "bg-primary text-primary-foreground")}
-                            >
-                              {user.role}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">{formatDate(user.created_at)}</TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="text-white bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="bg-popover">
-                                <DropdownMenuItem onClick={() => openEditDialog(user)} className="cursor-pointer">
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => openDeleteDialog(user)}
-                                  className="cursor-pointer text-destructive focus:text-destructive"
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {filteredUsers.length === 0 && !isUsersLoading && (
-                    <div className="py-12 text-center">
-                      <Users className="mx-auto mb-4 h-12 w-12 text-muted-foreground/50" />
-                      <p className="text-muted-foreground">No users found</p>
-                    </div>
-                  )}
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+                <div className="grid gap-2">
+                  <Label htmlFor="role">Role</Label>
+                  <Select
+                    value={formData.role}
+                    onValueChange={(value: "user" | "admin" | "premium") =>
+                      setFormData({ ...formData, role: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="premium">Premium</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleCreateUser}>Create User</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="bg-card border-border" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle className="text-card-foreground">Create New User</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Add a new user to the platform with username, password, and role.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="username" className="text-foreground">
-                Username
-              </Label>
-              <Input
-                id="username"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                placeholder="Enter username"
-                className="border-border bg-background text-foreground placeholder:text-muted-foreground"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password" className="text-foreground">
-                Password
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Enter password"
-                className="border-border bg-background text-foreground placeholder:text-muted-foreground"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="role" className="text-foreground">
-                Role
-              </Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value: "user" | "admin" | "premium") => setFormData({ ...formData, role: value })}
-              >
-                <SelectTrigger className="text-white border-border bg-background bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="premium">Premium</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsCreateDialogOpen(false)}
-              className="border-border text-white bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700"
-            >
-              Cancel
-            </Button>
-            <Button
-                onClick={handleCreateUser} 
-                variant="outline"
-                className="text-primary-foreground bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700">
-              Create User
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          {/* Edit User Dialog */}
+          <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit User Role</DialogTitle>
+                <DialogDescription>
+                  Update user role. Only the role can be changed.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label>Username</Label>
+                  <Input value={formData.username} disabled className="bg-muted" />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-role">Role</Label>
+                  <Select
+                    value={formData.role}
+                    onValueChange={(value: "user" | "admin" | "premium") =>
+                      setFormData({ ...formData, role: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="premium">Premium</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleEditUser}>Save Changes</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="bg-card border-border" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle className="text-card-foreground">Edit User Role</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Update user role. Only the role can be changed.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label className="text-foreground">
-                Username
-              </Label>
-              <Input
-                value={formData.username}
-                disabled
-                className="border-border bg-muted text-muted-foreground"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-role" className="text-foreground">
-                Role
-              </Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value: "user" | "admin" | "premium") => setFormData({ ...formData, role: value })}
-              >
-                <SelectTrigger className="border-border bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-popover">
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="premium">Premium</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsEditDialogOpen(false)}
-              className="border-border bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white"
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleEditUser} className="bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700" variant="outline">
-              <span className="text-white">Save Changes</span>
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete User Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent className="bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="text-card-foreground">Delete User</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Are you sure you want to delete user "{selectedUser?.username}"? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsDeleteDialogOpen(false)}
-              className="border-border text-foreground"
-            >
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleDeleteUser} 
-              variant="destructive"
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              <span className="text-white">Delete User</span>
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          {/* Delete User Dialog */}
+          <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete User</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete user "{selectedUser?.username}"? This action
+                  cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDeleteUser}>
+                  Delete User
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </div>

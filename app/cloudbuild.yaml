@@ -7,7 +7,8 @@ steps:
       - |
         VERSION=$$(cat VERSION)
         echo "Building frontend version: $$VERSION"
-        docker build -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/frontend:$$VERSION \
+        docker build --build-arg VITE_API_URL=${_VITE_API_URL} \
+                     -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/frontend:$$VERSION \
                      -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/frontend:latest .
     id: 'Build Frontend'
 
@@ -31,3 +32,4 @@ steps:
 substitutions:
   _REGION: 'us-central1'
   _REPOSITORY: 'devops-test-repo'
+  _VITE_API_URL: ''

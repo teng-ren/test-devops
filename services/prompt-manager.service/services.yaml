@@ -1,22 +1,22 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: auth-service
+  name: prompt-manager-service
 spec:
   selector:
-    app: auth-service
+    app: prompt-manager-service
   ports:
     - protocol: TCP
-      port: 8001
-      targetPort: 8001
+      port: 8002
+      targetPort: 8002
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: auth-postgres-service
+  name: chats-postgres-service
 spec:
   selector:
-    app: auth-postgres-db
+    app: chats-postgres-db
   ports:
     - protocol: TCP
       port: 5432

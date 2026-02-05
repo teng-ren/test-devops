@@ -49,7 +49,8 @@ jobs:
           docker build -t api-gateway:latest ./services/api-gateway.service/
           docker build -t frontend:latest ./app
           kind load docker-image auth:latest api-gateway:latest frontend:latest --name dev-cluster
-          kubectl apply -f k8s-namespace.yaml k8s-secrets.yaml k8s-postgres.yaml k8s-auth-service.yaml k8s-api-gateway.yaml k8s-frontend.yaml
+          kubectl create namespace dev
+          kubectl apply -k services/auth.service/ -k services/api-gateway.service/ -k app/
           kubectl wait --for=condition=Ready pod -l app=postgres -n dev --timeout=300s || true
           kubectl wait --for=condition=Ready pod -l app=api-gateway -n dev --timeout=300s || true
 

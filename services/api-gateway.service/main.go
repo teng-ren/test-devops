@@ -33,6 +33,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 func main() {
 	mux := http.NewServeMux()
 	auth_url := os.Getenv("AUTH_SERVICE_URL")
+	prompt_manager_url := os.Getenv("PROMPT_MANAGER_SERVICE_URL")
 
 	//Routes to Authentication service
 	mux.Handle("/auth/", http.StripPrefix("/auth", reverseProxy(auth_url)))
@@ -40,6 +41,16 @@ func main() {
 	//Routes to Admin service
 	mux.Handle("/admin/", http.StripPrefix("/admin", reverseProxy(auth_url)))
 
-	log.Println("API Gateway running on :8000")
-	log.Fatal(http.ListenAndServe(":8000", corsMiddleware(mux)))
+	//Routes to Prompt Manager service
+	mux.Handle("/chats/", http.StripPrefix("/chats", reverseProxy(prompt_manager_url+"/chats")))
+	mux.Handle("/chats", reverseProxy(prompt_manager_url))
+	mux.Handle("/models", reverseProxy(prompt_manager_url))
+
+	// Get port from environment or default to 8000
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8000"
+	}
+	log.Println("API Gateway running on :" + port)
+	log.Fatal(http.ListenAndServe(":"+port, corsMiddleware(mux)))
 }

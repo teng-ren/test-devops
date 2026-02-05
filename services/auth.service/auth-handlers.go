@@ -74,8 +74,9 @@ func checkPassword(hashedPassword, password string) bool {
 	return true
 }
 
-func generateJWT(username, role string) (string, error) {
+func generateJWT(userID int, username, role string) (string, error) {
 	claims := jwt.MapClaims{
+		"user_id":  userID,
 		"username": username,
 		"role":     role,
 		"exp":      time.Now().Add(time.Hour * 24).Unix(),
@@ -139,7 +140,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := generateJWT(user.Username, user.Role)
+	token, err := generateJWT(user.ID, user.Username, user.Role)
 	if err != nil {
 		log.Printf("Failed to generate token: %v", err)
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)

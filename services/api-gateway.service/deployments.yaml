@@ -19,12 +19,16 @@ spec:
           image: ${API_GATEWAY_IMAGE}
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: ${API_GATEWAY_PORT}
+            - containerPort: 8000
           env:
+            - name: PORT
+              value: "8000"
             - name: AUTH_SERVICE_URL
               value: "http://auth-service:8001"
             - name: ADMIN_SERVICE_URL
               value: "http://auth-service:8001"
+            - name: PROMPT_MANAGER_SERVICE_URL
+              value: "http://prompt-manager-service:8002"
           resources:
             limits:
               memory: "128Mi"
@@ -34,12 +38,12 @@ spec:
               cpu: "128m"
           readinessProbe:
             tcpSocket:
-              port: ${API_GATEWAY_PORT}
+              port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             tcpSocket:
-              port: ${API_GATEWAY_PORT}
+              port: 8000
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5

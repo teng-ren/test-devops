@@ -1,0 +1,33 @@
+steps:
+  # Read version from VERSION file
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        VERSION=$$(cat VERSION)
+        echo "Building prompt-manager-service version: $$VERSION"
+        docker build -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/prompt-manager-service:$$VERSION \
+                     -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/prompt-manager-service:latest .
+    id: 'Build Prompt Manager Service'
+
+  # Push versioned tag
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        VERSION=$$(cat VERSION)
+        docker push ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/prompt-manager-service:$$VERSION
+    id: 'Push Versioned Tag'
+    waitFor: ['Build Prompt Manager Service']
+
+  # Push latest tag
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/prompt-manager-service:latest']
+    id: 'Push Latest Tag'
+    waitFor: ['Build Prompt Manager Service']
+
+substitutions:
+  _REGION: 'us-central1'
+  _REPOSITORY: 'devops-test-repo'

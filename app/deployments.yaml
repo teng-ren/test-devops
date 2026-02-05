@@ -19,10 +19,10 @@ spec:
           image: ${FRONTEND_IMAGE}
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: ${FRONTEND_PORT}
+            - containerPort: 5173
           env:
-            - name: VITE_API_URL
-              value: "${VITE_API_URL}"
+            - name: PORT
+              value: "5173"
           resources:
             limits:
               memory: "512Mi"
@@ -32,11 +32,11 @@ spec:
               cpu: "500m"
           readinessProbe:
             tcpSocket:
-              port: ${FRONTEND_PORT}
+              port: 5173
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             tcpSocket:
-              port: ${FRONTEND_PORT}
+              port: 5173
             initialDelaySeconds: 10
             periodSeconds: 10
