@@ -57,22 +57,50 @@ jobs:
           docker build -t frontend:latest ./app
           kind load docker-image auth:latest api-gateway:latest frontend:latest --name dev-cluster
           kubectl create namespace dev
-          kubectl set env deployment/auth-service AUTH_SERVICE_IMAGE=auth:latest -n dev 2>/dev/null || true
-          kubectl apply -k services/auth.service/ -k services/api-gateway.service/ -k app/
-          kubectl wait --for=condition=Ready pod -l app=auth-postgres-db -n dev --timeout=300s || true
-          kubectl wait --for=condition=Ready pod -l app=auth-service -n dev --timeout=300s || true
-          kubectl wait --for=condition=Ready pod -l app=api-gateway -n dev --timeout=300s || true
+          
+          # Deploy with kustomize and override images
+          cd services/auth.service && kustomize edit set image '${AUTH_SERVICE_IMAGE}=auth:latest' && kustomize edit set namespace dev && cd ../..
+          cd services/api-gateway.service && kustomize edit set image '${API_GATEWAY_IMAGE}=api-gateway:latest' && kustomize edit set namespace dev && cd ../..
+          cd app && kustomize edit set image '${FRONTEND_IMAGE}=frontend:latest' && kustomize edit set namespace dev && cd ..
+          
+          kubectl apply -k services/auth.service/
+          kubectl apply -k services/api-gateway.service/
+          kubectl apply -k app/
+          
+          echo "Waiting for pods to be ready..."
+          kubectl wait --for=condition=Ready pod -l app=auth-postgres-db -n dev --timeout=300s
+          kubectl wait --for=condition=Ready pod -l app=auth-service -n dev --timeout=300s
+          kubectl wait --for=condition=Ready pod -l app=api-gateway -n dev --timeout=300s
           kubectl get pods -n dev
 
       - name: Port Forward for DAST
         run: |
+          echo "Setting up port-forward to API Gateway..."
           kubectl port-forward -n dev svc/api-gateway 8000:8000 > /tmp/portforward.log 2>&1 &
           PF_PID=$!
           echo "PORT_FORWARD_PID=$PF_PID" >> $GITHUB_ENV
           sleep 5
-          echo "Waiting for API Gateway on port 8000..."
-          timeout 60s bash -c 'until curl -s http://localhost:8000/health > /dev/null 2>&1; do sleep 2; done' || true
-          curl -v http://localhost:8000/health 2>&1 || echo "Health check endpoint not available"
+          
+          echo "Testing connection to API Gateway..."
+          for i in {1..30}; do
+            if curl -s http://localhost:8000 > /dev/null 2>&1; then
+              echo "✓ API Gateway is reachable on port 8000"
+              curl -v http://localhost:8000 2>&1 | head -20
+              break
+            fi
+            echo "Waiting for API Gateway... ($i/30)"
+            sleep 2
+          done
+          
+          # Show port-forward logs if connection failed
+          if ! curl -s http://localhost:8000 > /dev/null 2>&1; then
+            echo "❌ API Gateway not reachable after 60s"
+            echo "Port-forward logs:"
+            cat /tmp/portforward.log
+            kubectl get pods -n dev
+            kubectl logs -n dev -l app=api-gateway --tail=50
+            exit 1
+          fi
 
       # --- INTEGRATION TESTING PHASE ---
       - name: Integration Tests (Placeholder)
