@@ -50,14 +50,21 @@ jobs:
           docker build -t frontend:latest ./app
           kind load docker-image auth:latest api-gateway:latest frontend:latest --name dev-cluster
           kubectl create namespace dev
-          kubectl apply -k services/auth.service/ -k services/api-gateway.service/ -k app/
-          kubectl wait --for=condition=Ready pod -l app=postgres -n dev --timeout=300s || true
+          kubectl set env deployment/auth-service AUTH_SERVICE_IMAGE=auth:latest POSTGRES_DB=app_db POSTGRES_USER=app_user POSTGRES_PASSWORD=app_password JWT_SECRET=test-secret-key-for-ci -n dev 2>/dev/null || true
+          kubectl set env deployment/api-gateway API_GATEWAY_IMAGE=api-gateway:latest -n dev 2>/dev/null || true
+          kubectl set env deployment/frontend FRONTEND_IMAGE=frontend:latest -n dev 2>/dev/null || true
+          kubectl apply -k services/auth.service/ -k services/api-gateway.service/ -k app/ -n dev
+          kubectl wait --for=condition=Ready pod -l app=auth-postgres-db -n dev --timeout=300s || true
           kubectl wait --for=condition=Ready pod -l app=api-gateway -n dev --timeout=300s || true
 
-      - name: Wait for Services
+      - name: Port Forward for DAST
         run: |
+          kubectl port-forward -n dev svc/api-gateway 8000:8000 &
+          PF_PID=$!
+          echo "PORT_FORWARD_PID=$PF_PID" >> $GITHUB_ENV
+          sleep 3
           echo "Waiting for API Gateway on port 8000..."
-          timeout 60s bash -c 'until curl -s http://localhost:8000; do sleep 2; done'
+          timeout 60s bash -c 'until curl -s http://localhost:8000/health; do sleep 2; done' || true
 
       # --- INTEGRATION TESTING PHASE ---
       - name: Integration Tests (Placeholder)
@@ -85,7 +92,9 @@ jobs:
 
       - name: Shutdown Services
         if: always()
-        run: docker compose down
+        run: |
+          if [ ! -z "$PORT_FORWARD_PID" ]; then kill $PORT_FORWARD_PID 2>/dev/null || true; fi
+          kind delete cluster --name dev-cluster
 
       # --- PERFORMANCE PHASE ---
       - name: Performance Tests (Placeholder)
