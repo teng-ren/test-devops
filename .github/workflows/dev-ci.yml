@@ -58,19 +58,26 @@ jobs:
           kind load docker-image auth:latest api-gateway:latest frontend:latest --name dev-cluster
           kubectl create namespace dev
           
-          # Deploy with kustomize and override images
-          cd services/auth.service && kustomize edit set image '${AUTH_SERVICE_IMAGE}=auth:latest' && kustomize edit set namespace dev && cd ../..
-          cd services/api-gateway.service && kustomize edit set image '${API_GATEWAY_IMAGE}=api-gateway:latest' && kustomize edit set namespace dev && cd ../..
-          cd app && kustomize edit set image '${FRONTEND_IMAGE}=frontend:latest' && kustomize edit set namespace dev && cd ..
+          # Set environment variables for substitution
+          export AUTH_SERVICE_IMAGE=auth:latest
+          export API_GATEWAY_IMAGE=api-gateway:latest
+          export FRONTEND_IMAGE=frontend:latest
+          export POSTGRES_DB=app_db
+          export POSTGRES_USER=app_user
+          export POSTGRES_PASSWORD=app_password
+          export JWT_SECRET=test-secret-key-for-ci
+          export API_GATEWAY_IP=""
           
-          kubectl apply -k services/auth.service/
-          kubectl apply -k services/api-gateway.service/
-          kubectl apply -k app/
+          # Generate manifests with envsubst and apply
+          kustomize build services/auth.service | envsubst | kubectl apply -f - -n dev
+          kustomize build services/api-gateway.service | envsubst | kubectl apply -f - -n dev
+          kustomize build app | envsubst | kubectl apply -f - -n dev
           
           echo "Waiting for pods to be ready..."
-          kubectl wait --for=condition=Ready pod -l app=auth-postgres-db -n dev --timeout=300s
-          kubectl wait --for=condition=Ready pod -l app=auth-service -n dev --timeout=300s
-          kubectl wait --for=condition=Ready pod -l app=api-gateway -n dev --timeout=300s
+          kubectl get pods -n dev
+          kubectl wait --for=condition=Ready pod -l app=auth-postgres-db -n dev --timeout=180s || (kubectl describe pod -l app=auth-postgres-db -n dev && kubectl logs -l app=auth-postgres-db -n dev --tail=50)
+          kubectl wait --for=condition=Ready pod -l app=auth-service -n dev --timeout=180s || (kubectl describe pod -l app=auth-service -n dev && kubectl logs -l app=auth-service -n dev --tail=50)
+          kubectl wait --for=condition=Ready pod -l app=api-gateway -n dev --timeout=180s || (kubectl describe pod -l app=api-gateway -n dev && kubectl logs -l app=api-gateway -n dev --tail=50)
           kubectl get pods -n dev
 
       - name: Port Forward for DAST
