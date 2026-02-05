@@ -22,7 +22,7 @@ jobs:
       - name: Set up Kind cluster
         uses: helm/kind-action@v1.7.0
         with:
-          config: kind-config.yaml
+          version: v0.19.0
           cluster_name: dev-cluster
 
       - name: Create .env file
@@ -31,16 +31,23 @@ jobs:
           POSTGRES_DB=app_db
           POSTGRES_USER=app_user
           POSTGRES_PASSWORD=app_password
-          POSTGRES_HOST=db
+          POSTGRES_HOST=auth-postgres-service
           POSTGRES_PORT=5432
+          CHATS_POSTGRES_DB=chats_db
+          CHATS_POSTGRES_USER=chats_user
+          CHATS_POSTGRES_PASSWORD=chats_password
+          CHATS_POSTGRES_HOST=chats-postgres-service
+          CHATS_POSTGRES_PORT=5432
           DEFAULT_TESTUSER_USERNAME=testuser
           DEFAULT_TESTUSER_PASSWORD=testpass
           DEFAULT_ADMIN_USERNAME=admin
           DEFAULT_ADMIN_PASSWORD=adminpass
           JWT_SECRET=test-secret-key-for-ci
-          AUTH_SERVICE_URL=http://auth:8001
-          ADMIN_SERVICE_URL=http://auth:8001
+          AUTH_SERVICE_URL=http://auth-service:8001
+          ADMIN_SERVICE_URL=http://auth-service:8001
           VITE_API_URL=http://localhost:8000
+          PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+          PUBSUB_PROJECT_ID=local-project
           EOF
 
       - name: Build and Start Services
@@ -50,21 +57,22 @@ jobs:
           docker build -t frontend:latest ./app
           kind load docker-image auth:latest api-gateway:latest frontend:latest --name dev-cluster
           kubectl create namespace dev
-          kubectl set env deployment/auth-service AUTH_SERVICE_IMAGE=auth:latest POSTGRES_DB=app_db POSTGRES_USER=app_user POSTGRES_PASSWORD=app_password JWT_SECRET=test-secret-key-for-ci -n dev 2>/dev/null || true
-          kubectl set env deployment/api-gateway API_GATEWAY_IMAGE=api-gateway:latest -n dev 2>/dev/null || true
-          kubectl set env deployment/frontend FRONTEND_IMAGE=frontend:latest -n dev 2>/dev/null || true
-          kubectl apply -k services/auth.service/ -k services/api-gateway.service/ -k app/ -n dev
+          kubectl set env deployment/auth-service AUTH_SERVICE_IMAGE=auth:latest -n dev 2>/dev/null || true
+          kubectl apply -k services/auth.service/ -k services/api-gateway.service/ -k app/
           kubectl wait --for=condition=Ready pod -l app=auth-postgres-db -n dev --timeout=300s || true
+          kubectl wait --for=condition=Ready pod -l app=auth-service -n dev --timeout=300s || true
           kubectl wait --for=condition=Ready pod -l app=api-gateway -n dev --timeout=300s || true
+          kubectl get pods -n dev
 
       - name: Port Forward for DAST
         run: |
-          kubectl port-forward -n dev svc/api-gateway 8000:8000 &
+          kubectl port-forward -n dev svc/api-gateway 8000:8000 > /tmp/portforward.log 2>&1 &
           PF_PID=$!
           echo "PORT_FORWARD_PID=$PF_PID" >> $GITHUB_ENV
-          sleep 3
+          sleep 5
           echo "Waiting for API Gateway on port 8000..."
-          timeout 60s bash -c 'until curl -s http://localhost:8000/health; do sleep 2; done' || true
+          timeout 60s bash -c 'until curl -s http://localhost:8000/health > /dev/null 2>&1; do sleep 2; done' || true
+          curl -v http://localhost:8000/health 2>&1 || echo "Health check endpoint not available"
 
       # --- INTEGRATION TESTING PHASE ---
       - name: Integration Tests (Placeholder)
