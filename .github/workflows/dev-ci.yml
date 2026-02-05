@@ -55,13 +55,15 @@ jobs:
           docker build -t auth:latest ./services/auth.service/
           docker build -t api-gateway:latest ./services/api-gateway.service/
           docker build -t frontend:latest ./app
-          kind load docker-image auth:latest api-gateway:latest frontend:latest --name dev-cluster
+          docker build -t metrics-exporter:latest ./monitoring/metrics-exporter/
+          kind load docker-image auth:latest api-gateway:latest frontend:latest metrics-exporter:latest --name dev-cluster
           kubectl create namespace dev
           
           # Set environment variables for substitution
           export AUTH_SERVICE_IMAGE=auth:latest
           export API_GATEWAY_IMAGE=api-gateway:latest
           export FRONTEND_IMAGE=frontend:latest
+          export METRICS_EXPORTER_IMAGE=metrics-exporter:latest
           export POSTGRES_DB=app_db
           export POSTGRES_USER=app_user
           export POSTGRES_PASSWORD=app_password
@@ -72,12 +74,18 @@ jobs:
           kustomize build services/auth.service | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
           kustomize build services/api-gateway.service | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
           kustomize build app | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
+          kustomize build monitoring | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
           
           echo "Waiting for pods to be ready..."
           kubectl get pods -n dev
           kubectl wait --for=condition=Ready pod -l app=auth-postgres-db -n dev --timeout=180s || (kubectl describe pod -l app=auth-postgres-db -n dev && kubectl logs -l app=auth-postgres-db -n dev --tail=50)
           kubectl wait --for=condition=Ready pod -l app=auth-service -n dev --timeout=180s || (kubectl describe pod -l app=auth-service -n dev && kubectl logs -l app=auth-service -n dev --tail=50)
           kubectl wait --for=condition=Ready pod -l app=api-gateway -n dev --timeout=180s || (kubectl describe pod -l app=api-gateway -n dev && kubectl logs -l app=api-gateway -n dev --tail=50)
+          kubectl wait --for=condition=Ready pod -l app=prometheus -n dev --timeout=180s || echo "⚠️ Prometheus not ready"
+          kubectl wait --for=condition=Ready pod -l app=grafana -n dev --timeout=180s || echo "⚠️ Grafana not ready"
+          kubectl wait --for=condition=Ready pod -l app=kube-state-metrics -n dev --timeout=180s || echo "⚠️ Kube-state-metrics not ready"
+          # node-exporter is a DaemonSet, so we just check if pods exist
+          kubectl get daemonset -n dev -l app=node-exporter || echo "⚠️ Node-exporter not deployed"
           kubectl get pods -n dev
 
       - name: Port Forward for DAST

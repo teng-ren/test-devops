@@ -1,0 +1,877 @@
+{
+  "title": "Kubernetes Application Monitoring",
+    "tags": ["kubernetes", "monitoring", "production"],
+    "timezone": "browser",
+    "editable": true,
+    "graphTooltip": 1,
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+      "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "namespace",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(kube_pod_info, namespace)",
+          "multi": true,
+          "includeAll": true,
+          "refresh": 1
+        },
+        {
+          "name": "pod",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(kube_pod_info{namespace=~\"$namespace\"}, pod)",
+          "multi": true,
+          "includeAll": true,
+          "refresh": 1
+        }
+      ]
+    },
+  "panels": [
+      {
+        "id": 1,
+        "title": "RESOURCE METRICS - Real-time Overview",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 2,
+        "title": "Requests Per Second (RPS)",
+        "type": "stat",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 0, "y": 1, "w": 4, "h": 4 },
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[1m]))",
+            "legendFormat": "RPS",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 50, "color": "yellow" },
+                { "value": 100, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Average Request Latency",
+        "type": "stat",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 4, "y": 1, "w": 4, "h": 4 },
+        "targets": [
+          {
+            "expr": "sum(rate(http_request_duration_seconds_sum[1m])) / sum(rate(http_request_duration_seconds_count[1m])) * 1000",
+            "legendFormat": "Latency",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 500, "color": "yellow" },
+                { "value": 1000, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "CPU Load (%)",
+        "type": "stat",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
+        "targets": [
+          {
+            "expr": "avg(100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100))",
+            "legendFormat": "CPU",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 1,
+            "max": 100,
+            "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 70, "color": "yellow" },
+                { "value": 85, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Total Errors (5m)",
+        "type": "stat",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 12, "y": 1, "w": 3, "h": 4 },
+        "targets": [
+          {
+            "expr": "sum(increase(http_requests_total{status=~\"5..\"}[5m]))",
+            "legendFormat": "Errors",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 10, "color": "yellow" },
+                { "value": 50, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Active Nodes",
+        "type": "stat",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 15, "y": 1, "w": 3, "h": 4 },
+        "targets": [
+          {
+            "expr": "count(kube_node_info)",
+            "legendFormat": "Nodes",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "value",
+          "orientation": "auto",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 1, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Uptime (%)",
+        "type": "stat",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 18, "y": 1, "w": 3, "h": 4 },
+        "targets": [
+          {
+            "expr": "(1 - (sum(rate(http_requests_total{status=~\"5..\"}[24h])) / sum(rate(http_requests_total[24h])))) * 100",
+            "legendFormat": "Uptime",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 3,
+            "max": 100,
+            "min": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 99, "color": "yellow" },
+                { "value": 99.9, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "Messages in Queue",
+        "type": "stat",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 21, "y": 1, "w": 3, "h": 4 },
+        "targets": [
+          {
+            "expr": "messages_in_queue",
+            "legendFormat": "Queue",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 50, "color": "yellow" },
+                { "value": 100, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "NODE POOL USAGE",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 11,
+        "title": "Node Pool Resources",
+        "type": "table",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 0, "y": 6, "w": 24, "h": 6 },
+        "targets": [
+          {
+            "expr": "sum by (node) (rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) * 100",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "CPU Used %",
+            "refId": "A"
+          },
+          {
+            "expr": "sum by (node) (node_cpu_seconds_total)",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "CPU Total",
+            "refId": "B",
+            "hide": true
+          },
+          {
+            "expr": "sum by (node) (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / 1024 / 1024 / 1024",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "Memory Used GB",
+            "refId": "C"
+          },
+          {
+            "expr": "sum by (node) (node_memory_MemTotal_bytes) / 1024 / 1024 / 1024",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "Memory Total GB",
+            "refId": "D"
+          },
+          {
+            "expr": "count by (node) (kube_pod_info)",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "Pod Count",
+            "refId": "E"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge"
+          },
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true,
+                "instance": true,
+                "job": true
+              },
+              "renameByName": {
+                "node": "Node",
+                "Value #A": "CPU Used %",
+                "Value #C": "Memory Used (GB)",
+                "Value #D": "Memory Total (GB)",
+                "Value #E": "Pod Count"
+              }
+            }
+          }
+        ],
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "displayName": "CPU Used %",
+              "desc": true
+            }
+          ]
+        },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "auto",
+              "displayMode": "auto"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 70, "color": "yellow" },
+                { "value": 85, "color": "red" }
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "CPU Used %" },
+              "properties": [
+                { "id": "unit", "value": "percent" },
+                { "id": "decimals", "value": 1 },
+                {
+                  "id": "custom.displayMode",
+                  "value": "gradient-gauge"
+                },
+                { "id": "max", "value": 100 }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Memory Used (GB)" },
+              "properties": [
+                { "id": "unit", "value": "decgbytes" },
+                { "id": "decimals", "value": 2 }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Memory Total (GB)" },
+              "properties": [
+                { "id": "unit", "value": "decgbytes" },
+                { "id": "decimals", "value": 2 }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 20,
+        "title": "POD HEALTH",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 12, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 21,
+        "title": "Pod Health Status",
+        "type": "table",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 0, "y": 13, "w": 24, "h": 8 },
+        "targets": [
+          {
+            "expr": "kube_pod_status_phase{namespace=~\"$namespace\", pod=~\"$pod\"}",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "Status",
+            "refId": "A"
+          },
+          {
+            "expr": "sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{pod=~\"$pod\", namespace=~\"$namespace\", container!=\"\"}[5m])) * 100",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "CPU %",
+            "refId": "B"
+          },
+          {
+            "expr": "sum by (namespace, pod) (container_memory_working_set_bytes{pod=~\"$pod\", namespace=~\"$namespace\", container!=\"\"}) / sum by (namespace, pod) (container_spec_memory_limit_bytes{pod=~\"$pod\", namespace=~\"$namespace\", container!=\"\"}) * 100",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "Memory %",
+            "refId": "C"
+          },
+          {
+            "expr": "sum by (namespace, pod) (kube_pod_container_status_restarts_total{pod=~\"$pod\", namespace=~\"$namespace\"})",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "Restarts",
+            "refId": "D"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge"
+          },
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true,
+                "container": true,
+                "endpoint": true,
+                "instance": true,
+                "job": true,
+                "phase": true,
+                "service": true,
+                "uid": true
+              },
+              "renameByName": {
+                "namespace": "Namespace",
+                "pod": "Pod Name",
+                "Value #A": "Status",
+                "Value #B": "CPU Usage %",
+                "Value #C": "Memory Usage %",
+                "Value #D": "Restart Count"
+              }
+            }
+          }
+        ],
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "displayName": "Restart Count",
+              "desc": true
+            }
+          ]
+        },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "auto",
+              "displayMode": "auto"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "CPU Usage %" },
+              "properties": [
+                { "id": "unit", "value": "percent" },
+                { "id": "decimals", "value": 1 },
+                {
+                  "id": "custom.displayMode",
+                  "value": "gradient-gauge"
+                },
+                { "id": "max", "value": 100 },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "mode": "absolute",
+                    "steps": [
+                      { "value": 0, "color": "green" },
+                      { "value": 70, "color": "yellow" },
+                      { "value": 90, "color": "red" }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Memory Usage %" },
+              "properties": [
+                { "id": "unit", "value": "percent" },
+                { "id": "decimals", "value": 1 },
+                {
+                  "id": "custom.displayMode",
+                  "value": "gradient-gauge"
+                },
+                { "id": "max", "value": 100 },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "mode": "absolute",
+                    "steps": [
+                      { "value": 0, "color": "green" },
+                      { "value": 80, "color": "yellow" },
+                      { "value": 95, "color": "red" }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Restart Count" },
+              "properties": [
+                { "id": "unit", "value": "short" },
+                { "id": "decimals", "value": 0 },
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "mode": "absolute",
+                    "steps": [
+                      { "value": 0, "color": "green" },
+                      { "value": 1, "color": "yellow" },
+                      { "value": 5, "color": "red" }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Status" },
+              "properties": [
+                {
+                  "id": "mappings",
+                  "value": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "1": {
+                          "text": "Running",
+                          "color": "green"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 30,
+        "title": "USAGE TRENDS (30-Day Historical)",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 21, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 31,
+        "title": "Message Trends (Daily)",
+        "type": "timeseries",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 0, "y": 22, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum(increase(messages_processed_total[1d]))",
+            "legendFormat": "Messages Processed",
+            "refId": "A"
+          },
+          {
+            "expr": "avg_over_time(messages_in_queue[1d])",
+            "legendFormat": "Avg Queue Depth",
+            "refId": "B"
+          }
+        ],
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "showPoints": "auto",
+              "axisPlacement": "auto"
+            }
+          }
+        }
+      },
+      {
+        "id": 32,
+        "title": "User Trends (Daily)",
+        "type": "timeseries",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 12, "y": 22, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum(increase(user_registrations_total[1d]))",
+            "legendFormat": "New Registrations",
+            "refId": "A"
+          },
+          {
+            "expr": "avg_over_time(active_users_total[1d])",
+            "legendFormat": "Avg Active Users",
+            "refId": "B"
+          }
+        ],
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "showPoints": "auto",
+              "axisPlacement": "auto"
+            }
+          }
+        }
+      },
+      {
+        "id": 40,
+        "title": "SECURITY EVENTS",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 30, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 41,
+        "title": "Security Events by Type",
+        "type": "timeseries",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 0, "y": 31, "w": 16, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum by (event_type, severity) (rate(security_events_total[5m]))",
+            "legendFormat": "{{event_type}} - {{severity}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "calcs": ["lastNotNull", "max"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 20,
+              "showPoints": "never",
+              "axisPlacement": "auto"
+            }
+          }
+        }
+      },
+      {
+        "id": 42,
+        "title": "Security Event Severity Distribution",
+        "type": "piechart",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 16, "y": 31, "w": 8, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum by (severity) (increase(security_events_total[1h]))",
+            "legendFormat": "{{severity}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "values": ["value", "percent"]
+          },
+          "pieType": "donut"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        }
+      },
+      {
+        "id": 50,
+        "title": "COMPLIANCE TRACKING",
+        "type": "row",
+        "gridPos": { "x": 0, "y": 39, "w": 24, "h": 1 },
+        "collapsed": false
+      },
+      {
+        "id": 51,
+        "title": "Authentication Failures",
+        "type": "timeseries",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 0, "y": 40, "w": 12, "h": 6 },
+        "targets": [
+          {
+            "expr": "sum by (reason) (rate(auth_failures_total[5m]))",
+            "legendFormat": "{{reason}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 20,
+              "showPoints": "auto",
+              "axisPlacement": "auto"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 5, "color": "yellow" },
+                { "value": 10, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 52,
+        "title": "Auth Failure Rate (Last 24h)",
+        "type": "stat",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 12, "y": 40, "w": 6, "h": 6 },
+        "targets": [
+          {
+            "expr": "sum(increase(auth_failures_total[24h]))",
+            "legendFormat": "Total Failures",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "value",
+          "orientation": "auto",
+          "textMode": "value_and_name"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 100, "color": "yellow" },
+                { "value": 500, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 53,
+        "title": "Failed Login Attempts by User",
+        "type": "table",
+        "datasource": "Prometheus",
+        "gridPos": { "x": 18, "y": 40, "w": 6, "h": 6 },
+        "targets": [
+          {
+            "expr": "topk(10, sum by (user) (increase(auth_failures_total[1h])))",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "Failures",
+            "refId": "A"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true,
+                "instance": true,
+                "job": true
+              },
+              "renameByName": {
+                "user": "User",
+                "Value": "Failures (1h)"
+              }
+            }
+          }
+        ],
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "displayName": "Failures (1h)",
+              "desc": true
+            }
+          ]
+        }
+      }
+  ]
+}

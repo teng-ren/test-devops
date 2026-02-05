@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - prometheus/serviceaccounts.yaml
+  - prometheus/configmap.yaml
+  - prometheus/pvc.yaml
+  - prometheus/deployment.yaml
+  - prometheus/services.yaml
+  - grafana/deployment.yaml
+  - metrics-exporter/deployment.yaml
+  - exporters/node-exporter.yaml
+  - exporters/kube-state-metrics.yaml
+
+configMapGenerator:
+  - name: grafana-dashboards
+    files:
+      - grafana/dashboards/k8s-monitoring.json
+    options:
+      disableNameSuffixHash: true
