@@ -68,10 +68,10 @@ jobs:
           export JWT_SECRET=test-secret-key-for-ci
           export API_GATEWAY_IP=""
           
-          # Generate manifests with envsubst and apply
-          kustomize build services/auth.service | envsubst | kubectl apply -f - -n dev
-          kustomize build services/api-gateway.service | envsubst | kubectl apply -f - -n dev
-          kustomize build app | envsubst | kubectl apply -f - -n dev
+          # Generate manifests with envsubst, remove hardcoded namespaces, and apply to dev
+          kustomize build services/auth.service | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
+          kustomize build services/api-gateway.service | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
+          kustomize build app | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
           
           echo "Waiting for pods to be ready..."
           kubectl get pods -n dev
