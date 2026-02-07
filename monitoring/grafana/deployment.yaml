@@ -16,6 +16,23 @@ data:
         jsonData:
           timeInterval: 15s
           httpMethod: POST
+      - name: Google Cloud Monitoring
+        type: stackdriver
+        access: proxy
+        isDefault: false
+        editable: false
+        jsonData:
+          authenticationType: gce
+          defaultProject: dop-assignment-team1
+      - name: Google Cloud Logging
+        type: stackdriver
+        access: proxy
+        isDefault: false
+        editable: false
+        jsonData:
+          authenticationType: gce
+          defaultProject: dop-assignment-team1
+          logType: cloud_logging
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -68,6 +85,7 @@ spec:
       securityContext:
         fsGroup: 472
         runAsUser: 472
+      serviceAccountName: grafana
       containers:
         - name: grafana
           image: grafana/grafana:10.2.3
@@ -80,11 +98,13 @@ spec:
             - name: GF_SECURITY_ADMIN_PASSWORD
               value: admin
             - name: GF_INSTALL_PLUGINS
-              value: grafana-piechart-panel,grafana-clock-panel
+              value: grafana-piechart-panel,grafana-clock-panel,stackdriver
             - name: GF_SERVER_ROOT_URL
               value: http://localhost:3000
             - name: GF_USERS_ALLOW_SIGN_UP
               value: "false"
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/google/key.json
           volumeMounts:
             - name: storage
               mountPath: /var/lib/grafana
@@ -94,6 +114,9 @@ spec:
               mountPath: /etc/grafana/provisioning/dashboards
             - name: dashboards
               mountPath: /var/lib/grafana/dashboards
+            - name: gcp-key
+              mountPath: /var/secrets/google
+              readOnly: true
           resources:
             requests:
               cpu: 250m
@@ -126,7 +149,16 @@ spec:
         - name: dashboards
           configMap:
             name: grafana-dashboards
+        - name: gcp-key
+          secret:
+            secretName: gcp-service-account
+            optional: true
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana
+  namespace: dev
 ---
 apiVersion: v1
 kind: Service

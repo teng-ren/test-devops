@@ -11,6 +11,8 @@ resources:
   - metrics-exporter/deployment.yaml
   - exporters/node-exporter.yaml
   - exporters/kube-state-metrics.yaml
+  - gcp-exporter/deployment.yaml
+  - gcp-exporter/service.yaml
 
 configMapGenerator:
   - name: grafana-dashboards

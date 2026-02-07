@@ -209,3 +209,6 @@ __marimo__/
 services/auth.service/auth-service
 services/api-gateway.service/api-gateway
 services/admin.service/admin-service
+
+
+gcp-monitoring-key.json

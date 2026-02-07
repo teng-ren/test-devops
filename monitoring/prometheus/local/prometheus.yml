@@ -1,0 +1,75 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'dev-cluster'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Rule files
+rule_files:
+  - 'recording_rules.yml'
+  - 'alerting_rules.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Minikube services via port-forward
+  # Run: kubectl port-forward -n <namespace> svc/<service-name> <local-port>:<service-port>
+  # Example: kubectl port-forward -n dev svc/api-gateway 8080:8080
+  
+  # You can add your minikube services here when you port-forward them
+  # - job_name: 'api-gateway'
+  #   static_configs:
+  #     - targets: ['localhost:8080']
+
+  # Custom metrics exporter for app-specific metrics
+  - job_name: 'custom-app-metrics'
+    static_configs:
+      - targets: ['localhost:9091']
+    relabel_configs:
+      - target_label: job
+        replacement: 'app-metrics'
+
+  # Local node exporter
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['localhost:9100']
+
+  # Minikube Prometheus (federation - pulls all metrics from cluster)
+  - job_name: 'federate'
+    scrape_interval: 15s
+    honor_labels: true
+    metrics_path: '/federate'
+    params:
+      'match[]':
+        - '{job=~".+"}'
+    static_configs:
+      - targets:
+        - 'host.docker.internal:9091'
+
+  # GCP Cloud Monitoring Exporter (if running locally)
+  - job_name: 'gcp-monitoring'
+    static_configs:
+      - targets: ['host.docker.internal:8888']
+    scrape_interval: 30s
+    relabel_configs:
+      - target_label: cluster
+        replacement: 'ai-model-tester-2'
+      - target_label: source
+        replacement: 'gcp-cloud-monitoring'
+    metric_relabel_configs:
+      # Add GCP-specific labels
+      - source_labels: [__name__]
+        regex: 'gke_.*'
+        target_label: data_source
+        replacement: 'gcp'

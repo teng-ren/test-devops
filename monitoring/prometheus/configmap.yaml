@@ -140,6 +140,23 @@ data:
           - target_label: job
             replacement: 'app-metrics'
 
+      # GCP Cloud Monitoring Exporter
+      - job_name: 'gcp-monitoring'
+        static_configs:
+          - targets: ['gcp-exporter:8888']
+        scrape_interval: 30s
+        relabel_configs:
+          - target_label: cluster
+            replacement: 'ai-model-tester-2'
+          - target_label: source
+            replacement: 'gcp-cloud-monitoring'
+        metric_relabel_configs:
+          # Add GCP-specific labels
+          - source_labels: [__name__]
+            regex: 'gke_.*'
+            target_label: data_source
+            replacement: 'gcp'
+
   recording_rules.yml: |
     groups:
       - name: request_metrics

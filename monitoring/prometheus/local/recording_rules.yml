@@ -1,0 +1,34 @@
+groups:
+  - name: request_metrics
+    interval: 15s
+    rules:
+      # RPS calculation
+      - record: api_requests_per_second
+        expr: sum(rate(http_requests_total[1m])) by (service, method, status)
+
+      # Average request latency
+      - record: api_request_latency_avg_ms
+        expr: sum(rate(http_request_duration_seconds_sum[1m])) by (service) / sum(rate(http_request_duration_seconds_count[1m])) by (service) * 1000
+
+      # Error rate
+      - record: api_error_rate
+        expr: sum(rate(http_requests_total{status=~"5.."}[1m])) by (service) / sum(rate(http_requests_total[1m])) by (service)
+
+  - name: resource_metrics
+    interval: 30s
+    rules:
+      # Node CPU usage
+      - record: node_cpu_usage_percent
+        expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+      # Pod CPU usage
+      - record: pod_cpu_usage_percent
+        expr: sum(rate(container_cpu_usage_seconds_total{pod!=""}[5m])) by (pod, namespace) * 100
+
+      # Pod memory usage
+      - record: pod_memory_usage_bytes
+        expr: sum(container_memory_working_set_bytes{pod!=""}) by (pod, namespace)
+
+      # Pod memory usage percent
+      - record: pod_memory_usage_percent
+        expr: (pod_memory_usage_bytes / sum(container_spec_memory_limit_bytes{pod!=""}) by (pod, namespace)) * 100

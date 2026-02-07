@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gcp-monitoring-exporter
+  namespace: dev
+  labels:
+    app: gcp-monitoring-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gcp-monitoring-exporter
+  template:
+    metadata:
+      labels:
+        app: gcp-monitoring-exporter
+    spec:
+      serviceAccountName: gcp-exporter
+      containers:
+        - name: exporter
+          image: gcr.io/dop-assignment-team1/gcp-exporter:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8888
+              name: metrics
+          env:
+            - name: GCP_PROJECT_ID
+              value: "dop-assignment-team1"
+            - name: GKE_CLUSTER_NAME
+              value: "ai-model-tester-2"
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/google/key.json
+            - name: PORT
+              value: "8888"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8888
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8888
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: gcp-sa
+              mountPath: /var/secrets/google
+              readOnly: true
+      volumes:
+        - name: gcp-sa
+          secret:
+            secretName: gcp-sa-key
+

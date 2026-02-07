@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  gcp-exporter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gcp-exporter-local
+    environment:
+      - GCP_PROJECT_ID=dop-assignment-team1
+      - GKE_CLUSTER_NAME=ai-model-tester-2
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-monitoring-key.json
+      - PORT=8888
+    volumes:
+      - ../../gcp-monitoring-key.json:/app/gcp-monitoring-key.json:ro
+    ports:
+      - "8888:8888"

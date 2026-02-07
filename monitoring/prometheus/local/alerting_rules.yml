@@ -1,0 +1,79 @@
+groups:
+  - name: security_alerts
+    interval: 30s
+    rules:
+      - alert: HighAuthFailureRate
+        expr: rate(auth_failures_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "High authentication failure rate detected"
+          description: "Auth failure rate is {{ $value }} failures/sec on {{ $labels.instance }}"
+
+      - alert: UnauthorizedAccessAttempt
+        expr: increase(http_requests_total{status="401"}[5m]) > 50
+        for: 1m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Multiple unauthorized access attempts"
+          description: "{{ $value }} unauthorized attempts in 5 minutes"
+
+  - name: performance_alerts
+    interval: 30s
+    rules:
+      - alert: HighLatency
+        expr: api_request_latency_avg_ms > 1000
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High API latency detected"
+          description: "Average latency is {{ $value }}ms for {{ $labels.service }}"
+
+      - alert: HighErrorRate
+        expr: api_error_rate > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          category: reliability
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.service }}"
+
+  - name: resource_alerts
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: pod_cpu_usage_percent > 80
+        for: 10m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "High CPU usage on pod"
+          description: "Pod {{ $labels.pod }} in {{ $labels.namespace }} is using {{ $value }}% CPU"
+
+      - alert: HighMemoryUsage
+        expr: pod_memory_usage_percent > 85
+        for: 5m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "High memory usage on pod"
+          description: "Pod {{ $labels.pod }} in {{ $labels.namespace }} is using {{ $value }}% memory"
+
+      - alert: PodRestarting
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          category: reliability
+        annotations:
+          summary: "Pod is restarting frequently"
+          description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last 15 minutes"

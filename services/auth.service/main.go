@@ -7,6 +7,25 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+var (
+	httpRequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "Total number of HTTP requests",
+		},
+		[]string{"service", "method", "status"},
+	)
+	authFailuresTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "auth_failures_total",
+			Help: "Total number of authentication failures",
+		},
+	)
 )
 
 type User struct {
@@ -57,16 +76,17 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
+	mux.Handle("/metrics", promhttp.Handler())
 
 	//Authentication
-	mux.HandleFunc("/login", loginHandler)
+	mux.HandleFunc("/login", metricsMiddleware(loginHandler))
 	//Authorization
-	mux.HandleFunc("/validate", validateHandler)
+	mux.HandleFunc("/validate", metricsMiddleware(validateHandler))
 
-	mux.HandleFunc("GET /users", authMiddleware(getUsersHandler))
-	mux.HandleFunc("POST /users", authMiddleware(createUserHandler))
-	mux.HandleFunc("PUT /users/", authMiddleware(editUserHandler))
-	mux.HandleFunc("DELETE /users/", authMiddleware(deleteUserHandler))
+	mux.HandleFunc("GET /users", metricsMiddleware(authMiddleware(getUsersHandler)))
+	mux.HandleFunc("POST /users", metricsMiddleware(authMiddleware(createUserHandler)))
+	mux.HandleFunc("PUT /users/", metricsMiddleware(authMiddleware(editUserHandler)))
+	mux.HandleFunc("DELETE /users/", metricsMiddleware(authMiddleware(deleteUserHandler)))
 
 	// Get port from environment or default to 8001
 	port := os.Getenv("PORT")
@@ -80,4 +100,12 @@ func main() {
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
+}
+
+func metricsMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Track request
+		httpRequestsTotal.WithLabelValues("auth-service", r.Method, "200").Inc()
+		next(w, r)
+	}
 }
