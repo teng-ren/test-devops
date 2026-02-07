@@ -152,18 +152,11 @@
         "id": 6,
         "title": "Active Nodes",
         "type": "stat",
-        "datasource": "Google Cloud Monitoring",
+        "datasource": "Prometheus",
         "gridPos": { "x": 16, "y": 1, "w": 4, "h": 4 },
         "targets": [
           {
-            "metricQuery": {
-              "projectName": "dop-assignment-team1",
-              "query": "fetch k8s_node | metric 'kubernetes.io/node/cpu/allocatable_cores' | group_by 1m, [value_node_cpu: mean(value.node_cpu)] | group_by [], [value_node_cpu_aggregate: count(value_node_cpu)]",
-              "metricType": "kubernetes.io/node/cpu/allocatable_cores",
-              "crossSeriesReducer": "REDUCE_COUNT",
-              "alignmentPeriod": "60s",
-              "perSeriesAligner": "ALIGN_MEAN"
-            },
+            "expr": "count(gke_node_cpu_utilization)",
             "refId": "A"
           }
         ],
@@ -184,18 +177,11 @@
         "id": 7,
         "title": "Pod Count",
         "type": "stat",
-        "datasource": "Google Cloud Monitoring",
+        "datasource": "Prometheus",
         "gridPos": { "x": 20, "y": 1, "w": 4, "h": 4 },
         "targets": [
           {
-            "metricQuery": {
-              "projectName": "dop-assignment-team1",
-              "query": "fetch k8s_pod | metric 'kubernetes.io/pod/volume/total_bytes' | group_by 1m, [value_volume: count(value.volume)] | group_by [], [value_volume_aggregate: sum(value_volume)]",
-              "metricType": "kubernetes.io/pod/volume/total_bytes",
-              "crossSeriesReducer": "REDUCE_COUNT",
-              "alignmentPeriod": "60s",
-              "perSeriesAligner": "ALIGN_MEAN"
-            },
+            "expr": "count(count by (pod_name, namespace) (gke_container_cpu_usage_seconds))",
             "refId": "A"
           }
         ],
@@ -223,18 +209,11 @@
         "id": 9,
         "title": "CPU Load (%)",
         "type": "stat",
-        "datasource": "Google Cloud Monitoring",
+        "datasource": "Prometheus",
         "gridPos": { "x": 0, "y": 6, "w": 6, "h": 6 },
         "targets": [
           {
-            "metricQuery": {
-              "projectName": "dop-assignment-team1",
-              "query": "fetch k8s_node | metric 'kubernetes.io/node/cpu/allocatable_utilization' | group_by 1m, [value_node_cpu: mean(value.node_cpu)] | every 1m | group_by [], [value_node_cpu_mean: mean(value_node_cpu)] | scale '%'",
-              "metricType": "kubernetes.io/node/cpu/allocatable_utilization",
-              "crossSeriesReducer": "REDUCE_MEAN",
-              "alignmentPeriod": "60s",
-              "perSeriesAligner": "ALIGN_MEAN"
-            },
+            "expr": "avg(gke_node_cpu_utilization)",
             "refId": "A"
           }
         ],
@@ -265,18 +244,11 @@
         "id": 10,
         "title": "Memory Usage (%)",
         "type": "stat",
-        "datasource": "Google Cloud Monitoring",
+        "datasource": "Prometheus",
         "gridPos": { "x": 6, "y": 6, "w": 6, "h": 6 },
         "targets": [
           {
-            "metricQuery": {
-              "projectName": "dop-assignment-team1",
-              "query": "fetch k8s_node | metric 'kubernetes.io/node/memory/allocatable_utilization' | group_by 1m, [value_node_memory: mean(value.node_memory)] | every 1m | group_by [], [value_node_memory_mean: mean(value_node_memory)] | scale '%'",
-              "metricType": "kubernetes.io/node/memory/allocatable_utilization",
-              "crossSeriesReducer": "REDUCE_MEAN",
-              "alignmentPeriod": "60s",
-              "perSeriesAligner": "ALIGN_MEAN"
-            },
+            "expr": "avg(gke_node_memory_utilization)",
             "refId": "A"
           }
         ],
@@ -514,17 +486,12 @@
         "id": 20,
         "title": "GKE Node CPU Utilization by Node",
         "type": "timeseries",
-        "datasource": "Google Cloud Monitoring",
+        "datasource": "Prometheus",
         "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
         "targets": [
           {
-            "metricQuery": {
-              "projectName": "dop-assignment-team1",
-              "metricType": "kubernetes.io/node/cpu/allocatable_utilization",
-              "crossSeriesReducer": "REDUCE_NONE",
-              "alignmentPeriod": "60s",
-              "perSeriesAligner": "ALIGN_MEAN"
-            },
+            "expr": "gke_node_cpu_utilization",
+            "legendFormat": "{{node_name}}",
             "refId": "A"
           }
         ],
@@ -548,17 +515,12 @@
         "id": 21,
         "title": "GKE Node Memory Utilization by Node",
         "type": "timeseries",
-        "datasource": "Google Cloud Monitoring",
+        "datasource": "Prometheus",
         "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
         "targets": [
           {
-            "metricQuery": {
-              "projectName": "dop-assignment-team1",
-              "metricType": "kubernetes.io/node/memory/allocatable_utilization",
-              "crossSeriesReducer": "REDUCE_NONE",
-              "alignmentPeriod": "60s",
-              "perSeriesAligner": "ALIGN_MEAN"
-            },
+            "expr": "gke_node_memory_utilization",
+            "legendFormat": "{{node_name}}",
             "refId": "A"
           }
         ],
@@ -582,17 +544,12 @@
         "id": 22,
         "title": "GKE Container CPU Usage (Top 10)",
         "type": "timeseries",
-        "datasource": "Google Cloud Monitoring",
+        "datasource": "Prometheus",
         "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
         "targets": [
           {
-            "metricQuery": {
-              "projectName": "dop-assignment-team1",
-              "metricType": "kubernetes.io/container/cpu/core_usage_time",
-              "crossSeriesReducer": "REDUCE_NONE",
-              "alignmentPeriod": "60s",
-              "perSeriesAligner": "ALIGN_RATE"
-            },
+            "expr": "topk(10, gke_container_cpu_usage_seconds)",
+            "legendFormat": "{{namespace}}/{{pod_name}}/{{container_name}}",
             "refId": "A"
           }
         ],
@@ -614,17 +571,12 @@
         "id": 23,
         "title": "GKE Container Memory Usage (Top 10)",
         "type": "timeseries",
-        "datasource": "Google Cloud Monitoring",
+        "datasource": "Prometheus",
         "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 },
         "targets": [
           {
-            "metricQuery": {
-              "projectName": "dop-assignment-team1",
-              "metricType": "kubernetes.io/container/memory/used_bytes",
-              "crossSeriesReducer": "REDUCE_NONE",
-              "alignmentPeriod": "60s",
-              "perSeriesAligner": "ALIGN_MEAN"
-            },
+            "expr": "topk(10, gke_container_memory_usage_bytes)",
+            "legendFormat": "{{namespace}}/{{pod_name}}/{{container_name}}",
             "refId": "A"
           }
         ],
@@ -646,17 +598,12 @@
         "id": 24,
         "title": "GKE Pod Network Sent (Top 10)",
         "type": "timeseries",
-        "datasource": "Google Cloud Monitoring",
+        "datasource": "Prometheus",
         "gridPos": { "x": 0, "y": 40, "w": 12, "h": 8 },
         "targets": [
           {
-            "metricQuery": {
-              "projectName": "dop-assignment-team1",
-              "metricType": "kubernetes.io/pod/network/sent_bytes_count",
-              "crossSeriesReducer": "REDUCE_NONE",
-              "alignmentPeriod": "60s",
-              "perSeriesAligner": "ALIGN_RATE"
-            },
+            "expr": "topk(10, gke_pod_network_sent_bytes_total)",
+            "legendFormat": "{{namespace}}/{{pod_name}}",
             "refId": "A"
           }
         ],
@@ -678,17 +625,12 @@
         "id": 25,
         "title": "GKE Pod Network Received (Top 10)",
         "type": "timeseries",
-        "datasource": "Google Cloud Monitoring",
+        "datasource": "Prometheus",
         "gridPos": { "x": 12, "y": 40, "w": 12, "h": 8 },
         "targets": [
           {
-            "metricQuery": {
-              "projectName": "dop-assignment-team1",
-              "metricType": "kubernetes.io/pod/network/received_bytes_count",
-              "crossSeriesReducer": "REDUCE_NONE",
-              "alignmentPeriod": "60s",
-              "perSeriesAligner": "ALIGN_RATE"
-            },
+            "expr": "topk(10, gke_pod_network_received_bytes_total)",
+            "legendFormat": "{{namespace}}/{{pod_name}}",
             "refId": "A"
           }
         ],

@@ -19,7 +19,7 @@ spec:
       containers:
         - name: exporter
           image: gcr.io/dop-assignment-team1/gcp-exporter:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8888
               name: metrics
@@ -41,13 +41,13 @@ spec:
               memory: 512Mi
           livenessProbe:
             httpGet:
-              path: /health
+              path: /metrics
               port: 8888
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /health
+              path: /metrics
               port: 8888
             initialDelaySeconds: 5
             periodSeconds: 5
