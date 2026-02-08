@@ -13,10 +13,26 @@ jobs:
     permissions:
       security-events: write
       contents: read
+      actions: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Notify CI Start
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: https://discord.com/api/webhooks/1461656929641300000/CQEMow7P3Ozcf2U_djtq5iStuBPLuhO23AVF3-aCIEUZ768y0RMExyIxx180X1hTIvOC
+          status: ${{ job.status }}
+          title: "🚀 Dev CI Pipeline Started"
+          description: |
+            **Branch:** ${{ github.ref_name }}
+            **Commit:** ${{ github.sha }}
+            **Message:** ${{ github.event.head_commit.message || github.event.pull_request.title || 'N/A' }}
+            **Repository:** ${{ github.repository }}
+            **Run ID:** ${{ github.run_id }}
+          color: 0x0099ff
+          username: GitHub Actions
 
       # --- START SERVICES FOR DAST (Using Kubernetes) ---
       - name: Set up Kind cluster
@@ -55,37 +71,33 @@ jobs:
           docker build -t auth:latest ./services/auth.service/
           docker build -t api-gateway:latest ./services/api-gateway.service/
           docker build -t frontend:latest ./app
-          docker build -t metrics-exporter:latest ./monitoring/metrics-exporter/
-          kind load docker-image auth:latest api-gateway:latest frontend:latest metrics-exporter:latest --name dev-cluster
+          kind load docker-image auth:latest api-gateway:latest frontend:latest --name dev-cluster
           kubectl create namespace dev
           
           # Set environment variables for substitution
           export AUTH_SERVICE_IMAGE=auth:latest
           export API_GATEWAY_IMAGE=api-gateway:latest
           export FRONTEND_IMAGE=frontend:latest
-          export METRICS_EXPORTER_IMAGE=metrics-exporter:latest
           export POSTGRES_DB=app_db
           export POSTGRES_USER=app_user
           export POSTGRES_PASSWORD=app_password
           export JWT_SECRET=test-secret-key-for-ci
           export API_GATEWAY_IP=""
+          export DEFAULT_TESTUSER_USERNAME=testuser
+          export DEFAULT_TESTUSER_PASSWORD=testpass
+          export DEFAULT_ADMIN_USERNAME=admin
+          export DEFAULT_ADMIN_PASSWORD=adminpass
           
           # Generate manifests with envsubst, remove hardcoded namespaces, and apply to dev
           kustomize build services/auth.service | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
           kustomize build services/api-gateway.service | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
           kustomize build app | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
-          kustomize build monitoring | envsubst | sed '/^  namespace: default$/d' | kubectl apply -f - -n dev
           
           echo "Waiting for pods to be ready..."
           kubectl get pods -n dev
           kubectl wait --for=condition=Ready pod -l app=auth-postgres-db -n dev --timeout=180s || (kubectl describe pod -l app=auth-postgres-db -n dev && kubectl logs -l app=auth-postgres-db -n dev --tail=50)
           kubectl wait --for=condition=Ready pod -l app=auth-service -n dev --timeout=180s || (kubectl describe pod -l app=auth-service -n dev && kubectl logs -l app=auth-service -n dev --tail=50)
           kubectl wait --for=condition=Ready pod -l app=api-gateway -n dev --timeout=180s || (kubectl describe pod -l app=api-gateway -n dev && kubectl logs -l app=api-gateway -n dev --tail=50)
-          kubectl wait --for=condition=Ready pod -l app=prometheus -n dev --timeout=180s || echo "⚠️ Prometheus not ready"
-          kubectl wait --for=condition=Ready pod -l app=grafana -n dev --timeout=180s || echo "⚠️ Grafana not ready"
-          kubectl wait --for=condition=Ready pod -l app=kube-state-metrics -n dev --timeout=180s || echo "⚠️ Kube-state-metrics not ready"
-          # node-exporter is a DaemonSet, so we just check if pods exist
-          kubectl get daemonset -n dev -l app=node-exporter || echo "⚠️ Node-exporter not deployed"
           kubectl get pods -n dev
 
       - name: Port Forward for DAST
@@ -122,6 +134,36 @@ jobs:
         id: integration_tests
         run: echo "Integration tests will run here"
 
+      # --- ACCEPTANCE TESTING PHASE ---
+      - name: Set up Go for Acceptance Tests
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Run Acceptance Tests
+        id: acceptance_tests
+        run: |
+          cd services
+          # Only run auth/admin tests - prompt-manager not deployed in CI
+          go test -v -run 'TestUserLoginAndAuthenticationFlow|TestAdminUserManagementFlow|TestUnauthorizedAccessPrevention' ./acceptance_test.go -timeout 5m
+        continue-on-error: false
+
+      - name: Notify Integration Tests Result
+        if: always()
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: https://discord.com/api/webhooks/1462011108109062154/IurnVdVdeuKOcSR0sptBJa7MPD8K2Ik0td2pfTQwzrvnc8KAv9BL-dJSpbAEYJ7lf2uD
+          status: ${{ steps.acceptance_tests.outcome }}
+          title: "🧪 Integration & Acceptance Tests"
+          description: |
+            **Status:** ${{ steps.acceptance_tests.outcome }}
+            **Branch:** ${{ github.ref_name }}
+            **Commit:** ${{ github.sha }}
+            **Message:** ${{ github.event.head_commit.message || github.event.pull_request.title || 'N/A' }}
+            **Repository:** ${{ github.repository }}
+            **Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          username: GitHub Actions
+
       # --- SECURITY PHASE (DAST) ---
       - name: Run DAST (OWASP ZAP)
         id: dast
@@ -140,6 +182,23 @@ jobs:
             report_html.html
             report_md.md
             report_json.json
+
+      - name: Notify DAST Result
+        if: always()
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: https://discord.com/api/webhooks/1461656929641300000/CQEMow7P3Ozcf2U_djtq5iStuBPLuhO23AVF3-aCIEUZ768y0RMExyIxx180X1hTIvOC
+          status: ${{ steps.dast.outcome }}
+          title: "🔒 DAST Security Scan"
+          description: |
+            **Status:** ${{ steps.dast.outcome }}
+            **Tool:** OWASP ZAP
+            **Branch:** ${{ github.ref_name }}
+            **Commit:** ${{ github.sha }}
+            **Message:** ${{ github.event.head_commit.message || github.event.pull_request.title || 'N/A' }}
+            **Repository:** ${{ github.repository }}
+            **Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          username: GitHub Actions
 
       - name: Shutdown Services
         if: always()
@@ -160,58 +219,19 @@ jobs:
           echo "Executing Terraform apply to staging..."
           echo "Updating Kubernetes manifests for staging..."
 
-      # --- NOTIFICATIONS ---
-
-      # Initial Status Alert
-      - name: Notify Discord - CI Started
+      - name: Notify CI Completion
         if: always()
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_D }}
+        uses: sarisia/actions-status-discord@v1
         with:
-          args: "🚀 **CI STARTED** | Branch: `${{ github.ref_name }}` | Actor: `${{ github.actor }}`"
-
-      # ROUTE: INTEGRATION TESTS (Dev Channel)
-      - name: Notify Discord - Integration Test Failure
-        if: failure() && steps.integration_tests.outcome == 'failure'
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_I }}
-        with:
-          args: "🔗 **INTEGRATION FAILURE**: Pub/Sub queue or service communication error. Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-      # ROUTE: DAST ALERTS (QA Channel)
-      - name: Notify Discord - DAST Alert
-        if: failure() && steps.dast.outcome == 'failure'
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_QA }}
-        with:
-          args: "🔍 **DAST ALERT**: Runtime security vulnerabilities detected during dynamic scanning. Check Security Tab."
-
-      # ROUTE: PERFORMANCE (Lead Dev/Architect)
-      - name: Notify Discord - Performance Failure
-        if: failure() && steps.perf_tests.outcome == 'failure'
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_D }}
-        with:
-          args: "📉 **PERF REGRESSION**: Model latency or RPS thresholds exceeded on `${{ github.ref_name }}`."
-
-      # ROUTE: STAGING DEPLOYMENT (DevOps Team)
-      - name: Notify Discord - Staging Deployment Failure
-        if: failure() && steps.staging_deploy.outcome == 'failure'
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_D }}
-        with:
-          args: "⚠️ **STAGING DEPLOYMENT FAILED**: Unable to deploy to staging environment. Check logs."
-
-      # ROUTE: RELEVANT STAKEHOLDERS (Management/AIDC Leads)
-      - name: Notify Stakeholders - Success
-        if: success()
-        uses: Ilshidur/action-discord@master
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL_MGMT }}
-        with:
-          args: "✅ **DEV PIPELINE SUCCESS**: All integration, DAST, and performance tests passed. Staging deployment complete."
+          webhook: https://discord.com/api/webhooks/1461656929641300000/CQEMow7P3Ozcf2U_djtq5iStuBPLuhO23AVF3-aCIEUZ768y0RMExyIxx180X1hTIvOC
+          status: ${{ job.status }}
+          title: "✅ Dev CI Pipeline Complete"
+          description: |
+            **Final Status:** ${{ job.status }}
+            **Branch:** ${{ github.ref_name }}
+            **Commit:** ${{ github.sha }}
+            **Message:** ${{ github.event.head_commit.message || github.event.pull_request.title || 'N/A' }}
+            **Repository:** ${{ github.repository }}
+            **Event:** ${{ github.event_name }}
+            **Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          username: GitHub Actions
