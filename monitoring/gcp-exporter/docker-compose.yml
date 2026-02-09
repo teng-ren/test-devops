@@ -12,6 +12,6 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-monitoring-key.json
       - PORT=8888
     volumes:
-      - ../../gcp-monitoring-key.json:/app/gcp-monitoring-key.json:ro
+      - ${GOOGLE_APPLICATION_CREDENTIALS}:/app/gcp-monitoring-key.json:ro
     ports:
       - "8888:8888"

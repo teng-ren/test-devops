@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
@@ -16,7 +17,35 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+type counterAccumulator struct {
+	mu   sync.Mutex
+	last map[string]float64
+}
+
+func newCounterAccumulator() *counterAccumulator {
+	return &counterAccumulator{last: make(map[string]float64)}
+}
+
+func (c *counterAccumulator) delta(key string, current float64) float64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	last, ok := c.last[key]
+	c.last[key] = current
+	if !ok {
+		return 0
+	}
+	if current < last {
+		return current
+	}
+	return current - last
+}
+
 var (
+	containerCPUAccumulator       = newCounterAccumulator()
+	podNetworkReceivedAccumulator = newCounterAccumulator()
+	podNetworkSentAccumulator     = newCounterAccumulator()
+
 	// GKE Node metrics
 	gkeNodeCPUUtilization = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -43,8 +72,8 @@ var (
 	)
 
 	// GKE Container metrics
-	gkeContainerCPUUsage = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
+	gkeContainerCPUUsage = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
 			Name: "gke_container_cpu_usage_seconds",
 			Help: "GKE container CPU usage in seconds",
 		},
@@ -60,16 +89,16 @@ var (
 	)
 
 	// GKE Pod metrics
-	gkePodNetworkReceivedBytes = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
+	gkePodNetworkReceivedBytes = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
 			Name: "gke_pod_network_received_bytes_total",
 			Help: "GKE pod network received bytes",
 		},
 		[]string{"pod_name", "namespace"},
 	)
 
-	gkePodNetworkSentBytes = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
+	gkePodNetworkSentBytes = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
 			Name: "gke_pod_network_sent_bytes_total",
 			Help: "GKE pod network sent bytes",
 		},
@@ -276,7 +305,11 @@ func (e *GCPExporter) collectContainerCPU(ctx context.Context, startTime, endTim
 
 		if len(resp.Points) > 0 {
 			value := resp.Points[0].Value.GetDoubleValue()
-			gkeContainerCPUUsage.WithLabelValues(containerName, podName, namespace).Set(value)
+			key := containerName + "\x1f" + podName + "\x1f" + namespace
+			delta := containerCPUAccumulator.delta(key, value)
+			if delta > 0 {
+				gkeContainerCPUUsage.WithLabelValues(containerName, podName, namespace).Add(delta)
+			}
 		}
 	}
 
@@ -342,7 +375,11 @@ func (e *GCPExporter) collectPodNetwork(ctx context.Context, startTime, endTime 
 
 		if len(resp.Points) > 0 {
 			value := resp.Points[0].Value.GetInt64Value()
-			gkePodNetworkReceivedBytes.WithLabelValues(podName, namespace).Set(float64(value))
+			key := podName + "\x1f" + namespace
+			delta := podNetworkReceivedAccumulator.delta(key, float64(value))
+			if delta > 0 {
+				gkePodNetworkReceivedBytes.WithLabelValues(podName, namespace).Add(delta)
+			}
 		}
 	}
 
@@ -363,7 +400,11 @@ func (e *GCPExporter) collectPodNetwork(ctx context.Context, startTime, endTime 
 
 		if len(resp.Points) > 0 {
 			value := resp.Points[0].Value.GetInt64Value()
-			gkePodNetworkSentBytes.WithLabelValues(podName, namespace).Set(float64(value))
+			key := podName + "\x1f" + namespace
+			delta := podNetworkSentAccumulator.delta(key, float64(value))
+			if delta > 0 {
+				gkePodNetworkSentBytes.WithLabelValues(podName, namespace).Add(delta)
+			}
 		}
 	}
 
@@ -468,10 +509,11 @@ func main() {
 		defer ticker.Stop()
 
 		for {
-			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 			if err := exporter.collectMetrics(ctx); err != nil {
 				log.Printf("Error collecting metrics: %v", err)
 			}
+			cancel()
 			<-ticker.C
 		}
 	}()
@@ -480,11 +522,20 @@ func main() {
 	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			log.Printf("Error writing health response: %v", err)
+		}
 	})
 
+	server := &http.Server{
+		Addr:         ":" + port,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
 	log.Printf("Starting GCP monitoring exporter on port %s", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

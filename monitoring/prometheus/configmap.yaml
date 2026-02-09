@@ -7,7 +7,7 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
-      evaluation_interval: 15s
+      evaluation_interval: 10s
       external_labels:
         cluster: 'dev-cluster'
         environment: 'production'
@@ -16,7 +16,7 @@ data:
     alerting:
       alertmanagers:
         - static_configs:
-            - targets: []
+            - targets: ['alertmanager:9093']
 
     # Rule files
     rule_files:
@@ -54,24 +54,6 @@ data:
             regex: (.+)
             target_label: __metrics_path__
             replacement: /api/v1/nodes/${1}/proxy/metrics
-
-      # Kubernetes node cadvisor
-      - job_name: 'kubernetes-cadvisor'
-        kubernetes_sd_configs:
-          - role: node
-        scheme: https
-        tls_config:
-          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-        relabel_configs:
-          - action: labelmap
-            regex: __meta_kubernetes_node_label_(.+)
-          - target_label: __address__
-            replacement: kubernetes.default.svc:443
-          - source_labels: [__meta_kubernetes_node_name]
-            regex: (.+)
-            target_label: __metrics_path__
-            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
 
       # Kubernetes service endpoints
       - job_name: 'kubernetes-service-endpoints'
@@ -132,14 +114,6 @@ data:
             action: replace
             target_label: kubernetes_pod_name
 
-      # Custom metrics exporter for app-specific metrics
-      - job_name: 'custom-app-metrics'
-        static_configs:
-          - targets: ['metrics-exporter:9090']
-        relabel_configs:
-          - target_label: job
-            replacement: 'app-metrics'
-
       # GCP Cloud Monitoring Exporter
       - job_name: 'gcp-monitoring'
         static_configs:
@@ -174,12 +148,23 @@ data:
           - record: api_error_rate
             expr: sum(rate(http_requests_total{status=~"5.."}[1m])) by (service) / sum(rate(http_requests_total[1m])) by (service)
 
+      - name: app_metrics
+        interval: 30s
+        rules:
+          # Requests per second
+          - record: prompts_blocked_recent
+            expr: sum(rate(http_requests_total[5m])) or sum(rate(gcp_http_request_count[5m])) or on() vector(0)
+
       - name: resource_metrics
         interval: 30s
         rules:
           # Node CPU usage
           - record: node_cpu_usage_percent
-            expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+            expr: avg(gke_node_cpu_utilization)
+
+          # Node memory usage
+          - record: node_memory_usage_percent
+            expr: avg(gke_node_memory_utilization)
 
           # Pod CPU usage
           - record: pod_cpu_usage_percent
@@ -193,20 +178,28 @@ data:
           - record: pod_memory_usage_percent
             expr: (pod_memory_usage_bytes / sum(container_spec_memory_limit_bytes{pod!=""}) by (pod, namespace)) * 100
 
+          # Active nodes (Ready)
+          - record: nodes_ready_total
+            expr: count(gke_node_cpu_utilization)
+
+          # Running pods
+          - record: pods_running_total
+            expr: count(count by (pod_name, namespace) (gke_container_cpu_usage_seconds))
+
   alerting_rules.yml: |
     groups:
       - name: security_alerts
         interval: 30s
         rules:
           - alert: HighAuthFailureRate
-            expr: rate(auth_failures_total[5m]) > 10
-            for: 2m
+            expr: sum(auth_failures) > 50
+            for: 1m
             labels:
               severity: critical
               category: security
             annotations:
               summary: "High authentication failure rate detected"
-              description: "Auth failure rate is {{ $value }} failures/sec on {{ $labels.instance }}"
+              description: "{{ $value }} auth failures in the last 5 minutes on {{ $labels.instance }}"
 
           - alert: UnauthorizedAccessAttempt
             expr: increase(http_requests_total{status="401"}[5m]) > 50
@@ -273,3 +266,16 @@ data:
             annotations:
               summary: "Pod is restarting frequently"
               description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last 15 minutes"
+
+      - name: heartbeat_alerts
+        interval: 30s
+        rules:
+          - alert: SystemHeartbeat
+            expr: vector(1)
+            for: 30s
+            labels:
+              severity: info
+              category: heartbeat
+            annotations:
+              summary: "System Health Status"
+              description: "System is running and healthy. Check Grafana dashboard for detailed metrics."

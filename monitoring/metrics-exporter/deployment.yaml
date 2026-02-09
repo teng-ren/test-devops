@@ -21,8 +21,8 @@ spec:
     spec:
       containers:
         - name: metrics-exporter
-          image: metrics-exporter:latest
-          imagePullPolicy: IfNotPresent
+          image: gcr.io/dop-assignment-team1/metrics-exporter:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 9090
               name: metrics

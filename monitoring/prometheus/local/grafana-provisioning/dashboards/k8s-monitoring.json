@@ -315,7 +315,7 @@
         "gridPos": { "x": 0, "y": 11, "w": 6, "h": 4 },
         "targets": [
           {
-            "expr": "sum(increase(auth_failures_total[5m])) or on() vector(0)",
+            "expr": "sum(auth_failures) or on() vector(0)",
             "refId": "A"
           }
         ],
@@ -348,7 +348,7 @@
         "gridPos": { "x": 6, "y": 11, "w": 6, "h": 4 },
         "targets": [
           {
-            "expr": "sum(increase(security_events_total[5m])) or on() vector(0)",
+            "expr": "sum(security_events) or on() vector(0)",
             "refId": "A"
           }
         ],

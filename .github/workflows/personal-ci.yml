@@ -7,7 +7,7 @@ on:
     branches-ignore: []
 
 jobs:
-  quality-gate:
+  ci:
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -20,7 +20,7 @@ jobs:
       - name: Notify CI Start
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1461656075559374915/Hs7M6ZgYx2ESTZRu0MMV7_Aau3sykxOi_0PTSNUeQqjqUQRBmaVZbRCQMRhxIcbMzK8U
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL_P }}
           status: ${{ job.status }}
           title: "👨‍💻 Developer CI Started"
           description: |
@@ -33,9 +33,9 @@ jobs:
           username: GitHub Actions
 
       - name: Set up Go (for Backend/Auth)
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.25.5'
+          go-version: '1.23'
 
       - name: Run Linter
         id: linter
@@ -43,15 +43,28 @@ jobs:
           cd services/api-gateway.service && go vet ./... && cd ../..
           cd services/auth.service && go vet ./... && cd ../..
 
-      - name: Run Unit Tests
+      # --- UNIT TESTS ---
+      - name: Run Unit Tests for Auth Service
+        working-directory: ./services/auth.service
+        run: |
+          go test -v -short .
+
+      - name: Run Unit Tests for API Gateway Service
+        working-directory: ./services/api-gateway.service
+        run: |
+          go test -v -short .
+
+      - name: Run Unit Tests for Prompt Manager Service
         id: unit_tests
-        run: echo "Unit tests will run here"
+        working-directory: ./services/prompt-manager.service
+        run: |
+          go test -v -short .
 
       - name: Notify Unit Tests Result
         if: always()
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1462011447272804372/E10tboUDIXCuoiHHLoqvQDUSGK1ydntgmzGOju0EiJO_CcXGEHOeHYetZiI4uwsnoYIz
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL_U }}
           status: ${{ steps.unit_tests.outcome }}
           title: "🧪 Unit Tests"
           description: |
@@ -105,7 +118,7 @@ jobs:
         if: always()
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1461656075559374915/Hs7M6ZgYx2ESTZRu0MMV7_Aau3sykxOi_0PTSNUeQqjqUQRBmaVZbRCQMRhxIcbMzK8U
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL_P }}
           status: ${{ job.status }}
           title: "🔒 Security Scans (SAST & SCA)"
           description: |
@@ -122,7 +135,7 @@ jobs:
         if: always()
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1461656075559374915/Hs7M6ZgYx2ESTZRu0MMV7_Aau3sykxOi_0PTSNUeQqjqUQRBmaVZbRCQMRhxIcbMzK8U
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL_P }}
           status: ${{ job.status }}
           title: "✅ Quality Gate Complete"
           description: |

@@ -3,14 +3,14 @@ groups:
     interval: 30s
     rules:
       - alert: HighAuthFailureRate
-        expr: rate(auth_failures_total[5m]) > 10
+        expr: sum(auth_failures) > 50
         for: 2m
         labels:
           severity: critical
           category: security
         annotations:
           summary: "High authentication failure rate detected"
-          description: "Auth failure rate is {{ $value }} failures/sec on {{ $labels.instance }}"
+          description: "{{ $value }} auth failures in the last 5 minutes on {{ $labels.instance }}"
 
       - alert: UnauthorizedAccessAttempt
         expr: increase(http_requests_total{status="401"}[5m]) > 50

@@ -18,7 +18,7 @@ spec:
       serviceAccountName: gcp-exporter
       containers:
         - name: exporter
-          image: gcr.io/dop-assignment-team1/gcp-exporter:latest
+          image: gcr.io/dop-assignment-team1/gcp-exporter:v1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8888

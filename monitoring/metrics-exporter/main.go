@@ -35,10 +35,10 @@ var (
 	)
 
 	// Auth metrics
-	authFailuresTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "auth_failures_total",
-			Help: "Total number of authentication failures",
+	authFailures = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "auth_failures",
+			Help: "Recent authentication failures in the last 5 minutes",
 		},
 		[]string{"reason"},
 	)
@@ -74,10 +74,10 @@ var (
 	)
 
 	// Security event metrics
-	securityEventsTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "security_events_total",
-			Help: "Total number of security events",
+	securityEvents = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "security_events",
+			Help: "Recent security events in the last 5 minutes",
 		},
 		[]string{"event_type", "severity"},
 	)
@@ -100,12 +100,12 @@ type MetricsCollector struct {
 func init() {
 	prometheus.MustRegister(httpRequestsTotal)
 	prometheus.MustRegister(httpRequestDuration)
-	prometheus.MustRegister(authFailuresTotal)
+	prometheus.MustRegister(authFailures)
 	prometheus.MustRegister(messagesInQueue)
 	prometheus.MustRegister(messagesProcessedTotal)
 	prometheus.MustRegister(activeUsersTotal)
 	prometheus.MustRegister(userRegistrationsTotal)
-	prometheus.MustRegister(securityEventsTotal)
+	prometheus.MustRegister(securityEvents)
 	prometheus.MustRegister(serviceUptime)
 }
 
@@ -143,7 +143,7 @@ func (mc *MetricsCollector) CollectAuthMetrics(ctx context.Context) error {
 	if err != nil && err != sql.ErrNoRows {
 		log.Printf("Error collecting auth metrics: %v", err)
 	} else {
-		authFailuresTotal.WithLabelValues("invalid_credentials").Add(float64(failureCount))
+		authFailures.WithLabelValues("invalid_credentials").Set(float64(failureCount))
 	}
 
 	return nil
@@ -169,6 +169,8 @@ func (mc *MetricsCollector) CollectUserMetrics(ctx context.Context) error {
 	err = mc.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users").Scan(&totalUsers)
 	if err != nil && err != sql.ErrNoRows {
 		log.Printf("Error counting users: %v", err)
+	} else {
+		userRegistrationsTotal.Add(0) // Initialize counter
 	}
 
 	return nil
@@ -196,7 +198,7 @@ func (mc *MetricsCollector) CollectSecurityMetrics(ctx context.Context) error {
 			if err := rows.Scan(&eventType, &severity, &count); err != nil {
 				continue
 			}
-			securityEventsTotal.WithLabelValues(eventType, severity).Add(float64(count))
+			securityEvents.WithLabelValues(eventType, severity).Set(float64(count))
 		}
 	}
 
@@ -206,11 +208,18 @@ func (mc *MetricsCollector) CollectSecurityMetrics(ctx context.Context) error {
 func (mc *MetricsCollector) StartCollecting() {
 	ticker := time.NewTicker(30 * time.Second)
 	go func() {
+		defer ticker.Stop()
 		for range ticker.C {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			mc.CollectAuthMetrics(ctx)
-			mc.CollectUserMetrics(ctx)
-			mc.CollectSecurityMetrics(ctx)
+			if err := mc.CollectAuthMetrics(ctx); err != nil {
+				log.Printf("Error collecting auth metrics: %v", err)
+			}
+			if err := mc.CollectUserMetrics(ctx); err != nil {
+				log.Printf("Error collecting user metrics: %v", err)
+			}
+			if err := mc.CollectSecurityMetrics(ctx); err != nil {
+				log.Printf("Error collecting security metrics: %v", err)
+			}
 
 			// Update uptime
 			serviceUptime.Set(time.Since(startTime).Seconds())
@@ -221,10 +230,12 @@ func (mc *MetricsCollector) StartCollecting() {
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"status": "healthy",
 		"uptime": time.Since(startTime).String(),
-	})
+	}); err != nil {
+		log.Printf("Error encoding health response: %v", err)
+	}
 }
 
 func getEnv(key, defaultValue string) string {
@@ -246,23 +257,62 @@ func main() {
 		log.Println("Database metrics collector started")
 	}
 
-	// Simulate some metrics for testing
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		for range ticker.C {
-			// Simulate request metrics
-			httpRequestsTotal.WithLabelValues("api-gateway", "GET", "200").Inc()
-			httpRequestsTotal.WithLabelValues("auth-service", "POST", "200").Inc()
+	// Optional metric simulation (disabled by default)
+	// Set ENABLE_METRIC_SIMULATION=true to enable fake metrics for testing
+	if getEnv("ENABLE_METRIC_SIMULATION", "") == "true" {
+		log.Println("Metric simulation enabled via ENABLE_METRIC_SIMULATION")
+		go func() {
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				// Simulate request metrics
+				httpRequestsTotal.WithLabelValues("api-gateway", "GET", "200").Inc()
+				httpRequestsTotal.WithLabelValues("auth-service", "POST", "200").Inc()
 
-			// Simulate queue depth (mock)
-			messagesInQueue.Set(float64(time.Now().Unix() % 100))
-		}
-	}()
+				// Simulate queue depth (mock)
+				messagesInQueue.Set(float64(time.Now().Unix() % 100))
+			}
+		}()
+	}
 
 	http.Handle("/metrics", promhttp.Handler())
 	http.HandleFunc("/health", healthHandler)
 
+	// Test endpoints for triggering alerts
+	http.HandleFunc("/test/auth-failures", func(w http.ResponseWriter, r *http.Request) {
+		authFailures.WithLabelValues("invalid_credentials").Set(100)
+		log.Println("TEST: Set auth_failures to 100 (triggers HighAuthFailureRate)")
+		fmt.Fprintf(w, "✅ Set auth_failures to 100. Alert should fire in ~1 minutes.\n")
+	})
+
+	http.HandleFunc("/test/reset", func(w http.ResponseWriter, r *http.Request) {
+		if collector != nil {
+			// Force re-collection from database to get real value
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := collector.CollectAuthMetrics(ctx); err != nil {
+				log.Printf("TEST: Error collecting actual metrics: %v", err)
+				fmt.Fprintf(w, "⚠️  Error fetching database value, reset to 0.\n")
+				authFailures.WithLabelValues("invalid_credentials").Set(0)
+			} else {
+				log.Println("TEST: Reset auth_failures to actual database value")
+				fmt.Fprintf(w, "✅ Reset to actual database value.\n")
+			}
+			cancel()
+		} else {
+			authFailures.WithLabelValues("invalid_credentials").Set(0)
+			log.Println("TEST: Reset auth_failures to 0 (no database connection)")
+			fmt.Fprintf(w, "✅ Reset to 0 (no database connection).\n")
+		}
+	})
+
 	port := getEnv("PORT", "9090")
 	log.Printf("Metrics exporter listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+
+	server := &http.Server{
+		Addr:         ":" + port,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	log.Fatal(server.ListenAndServe())
 }

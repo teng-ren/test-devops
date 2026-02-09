@@ -7,7 +7,7 @@ on:
     branches: ["dev", "main"]
 
 jobs:
-  ci-dev:
+  ci:
     runs-on: ubuntu-latest
     # Required for uploading security results to the GitHub Security Tab
     permissions:
@@ -22,7 +22,7 @@ jobs:
       - name: Notify CI Start
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1461656929641300000/CQEMow7P3Ozcf2U_djtq5iStuBPLuhO23AVF3-aCIEUZ768y0RMExyIxx180X1hTIvOC
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL_D }}
           status: ${{ job.status }}
           title: "🚀 Dev CI Pipeline Started"
           description: |
@@ -33,6 +33,110 @@ jobs:
             **Run ID:** ${{ github.run_id }}
           color: 0x0099ff
           username: GitHub Actions
+
+      # --- GO SETUP ---
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      # --- INTEGRATION TESTS ---
+      - name: Start test services for integration tests
+        env:
+          # Docker-compose variables
+          POSTGRES_HOST: auth-db
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: devops_db
+          CHATS_POSTGRES_HOST: chats_db
+          CHATS_POSTGRES_PORT: 5432
+          CHATS_POSTGRES_USER: postgres
+          CHATS_POSTGRES_PASSWORD: postgres
+          CHATS_POSTGRES_DB: chats_db
+          DEFAULT_TESTUSER_USERNAME: testuser
+          DEFAULT_TESTUSER_PASSWORD: testpass
+          DEFAULT_ADMIN_USERNAME: admin
+          DEFAULT_ADMIN_PASSWORD: adminpass
+          JWT_SECRET: test-secret-key
+          AUTH_SERVICE_URL: http://auth:8001
+          ADMIN_SERVICE_URL: http://auth:8001
+          VITE_API_URL: http://localhost:8000
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+          
+      - name: Wait for integration test services to be ready
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: devops_db
+          CHATS_POSTGRES_USER: postgres
+          CHATS_POSTGRES_DB: chats_db
+        run: |
+          echo "Waiting for PostgreSQL (auth-db) to be ready..."
+          for i in {1..30}; do
+            if docker compose exec -T auth-db pg_isready -U $POSTGRES_USER -d $POSTGRES_DB > /dev/null 2>&1; then
+              echo "Auth DB is ready"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          echo "Waiting for PostgreSQL (chats_db) to be ready..."
+          for i in {1..30}; do
+            if docker compose exec -T chats_db pg_isready -U $CHATS_POSTGRES_USER -d $CHATS_POSTGRES_DB > /dev/null 2>&1; then
+              echo "Chats DB is ready"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          echo "Waiting for Pub/Sub emulator..."
+          sleep 5
+          
+          echo "All services ready!"
+
+      - name: Run Integration Tests for Auth Service
+        working-directory: ./services/auth.service
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: devops_db
+          JWT_SECRET: test-secret-key
+        run: |
+          go test -v .
+
+      - name: Run Integration Tests for API Gateway Service
+        working-directory: ./services/api-gateway.service
+        env:
+          AUTH_SERVICE_URL: http://localhost:8001
+        run: |
+          go test -v .
+
+      - name: Run Integration Tests for Prompt Manager Service
+        working-directory: ./services/prompt-manager.service
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5433
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: chats_db
+          PUBSUB_EMULATOR_HOST: localhost:8085
+          PUBSUB_PROJECT_ID: local-project
+          PUBSUB_TOPIC_ID: prompt-requests
+          AUTH_SERVICE_URL: http://localhost:8001
+          GEMMA3_SERVICE_URL: http://localhost:8003
+          QWEN3_SERVICE_URL: http://localhost:8004
+        run: |
+          go test -v .
+
+      - name: Stop integration test services
+        if: always()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.test.yml down -v
 
       # --- START SERVICES FOR DAST (Using Kubernetes) ---
       - name: Set up Kind cluster
@@ -129,17 +233,7 @@ jobs:
             exit 1
           fi
 
-      # --- INTEGRATION TESTING PHASE ---
-      - name: Integration Tests (Placeholder)
-        id: integration_tests
-        run: echo "Integration tests will run here"
-
       # --- ACCEPTANCE TESTING PHASE ---
-      - name: Set up Go for Acceptance Tests
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.21'
-      
       - name: Run Acceptance Tests
         id: acceptance_tests
         run: |
@@ -152,7 +246,7 @@ jobs:
         if: always()
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1462011108109062154/IurnVdVdeuKOcSR0sptBJa7MPD8K2Ik0td2pfTQwzrvnc8KAv9BL-dJSpbAEYJ7lf2uD
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL_I }}
           status: ${{ steps.acceptance_tests.outcome }}
           title: "🧪 Integration & Acceptance Tests"
           description: |
@@ -187,7 +281,7 @@ jobs:
         if: always()
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1461656929641300000/CQEMow7P3Ozcf2U_djtq5iStuBPLuhO23AVF3-aCIEUZ768y0RMExyIxx180X1hTIvOC
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL_D }}
           status: ${{ steps.dast.outcome }}
           title: "🔒 DAST Security Scan"
           description: |
@@ -223,7 +317,7 @@ jobs:
         if: always()
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1461656929641300000/CQEMow7P3Ozcf2U_djtq5iStuBPLuhO23AVF3-aCIEUZ768y0RMExyIxx180X1hTIvOC
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL_D }}
           status: ${{ job.status }}
           title: "✅ Dev CI Pipeline Complete"
           description: |

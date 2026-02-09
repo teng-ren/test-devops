@@ -90,7 +90,7 @@
         "gridPos": { "x": 8, "y": 1, "w": 4, "h": 4 },
         "targets": [
           {
-            "expr": "sum(increase(prompts_blocked_total[5m])) or on() vector(0)",
+            "expr": "sum(increase(http_requests_total{status=~\"4..\"}[5m])) or on() vector(0)",
             "refId": "A"
           }
         ],
@@ -283,7 +283,7 @@
         "gridPos": { "x": 16, "y": 6, "w": 8, "h": 4 },
         "targets": [
           {
-            "expr": "(sum(rate(gke_pod_network_sent_bytes_total[5m])) * 8 / 1000000) or ((sum(rate(node_network_transmit_bytes_total{device!~\"lo\"}[5m])) + sum(rate(node_network_receive_bytes_total{device!~\"lo\"}[5m]))) * 8 / 1000000) or on() vector(0)",
+            "expr": "((sum(rate(gke_pod_network_sent_bytes_total[5m])) + sum(rate(gke_pod_network_received_bytes_total[5m]))) * 8 / 1000000) or on() vector(0)",
             "refId": "A"
           }
         ],
@@ -315,7 +315,7 @@
         "gridPos": { "x": 0, "y": 11, "w": 6, "h": 4 },
         "targets": [
           {
-            "expr": "sum(increase(auth_failures_total[5m])) or on() vector(0)",
+            "expr": "sum(auth_failures) or on() vector(0)",
             "refId": "A"
           }
         ],
@@ -348,7 +348,7 @@
         "gridPos": { "x": 6, "y": 11, "w": 6, "h": 4 },
         "targets": [
           {
-            "expr": "sum(increase(security_events_total[5m])) or on() vector(0)",
+            "expr": "sum(security_events) or on() vector(0)",
             "refId": "A"
           }
         ],
@@ -373,7 +373,7 @@
         "gridPos": { "x": 12, "y": 11, "w": 6, "h": 4 },
         "targets": [
           {
-            "expr": "sum(rate(messages_sent_total[5m])) or on() vector(0)",
+            "expr": "sum(rate(messages_processed_total[5m])) or on() vector(0)",
             "refId": "A"
           }
         ],

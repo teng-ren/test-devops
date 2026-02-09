@@ -136,6 +136,11 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
+.env.*.local
+test.env
+*.env
+!*.env.example
 .envrc
 .venv
 env/
@@ -194,6 +199,9 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Kustomize build output
+kustomize-output.yaml
+
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
@@ -209,6 +217,9 @@ __marimo__/
 services/auth.service/auth-service
 services/api-gateway.service/api-gateway
 services/admin.service/admin-service
-
+services/prompt-manager.service/prompt-manager-service
+services/prompt-manager.service/prompt-manager-service.exe
+coverage.txt
+coverage
 
 gcp-monitoring-key.json

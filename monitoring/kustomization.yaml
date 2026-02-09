@@ -8,15 +8,35 @@ resources:
   - prometheus/deployment.yaml
   - prometheus/services.yaml
   - grafana/deployment.yaml
+  - alertmanager/deployment.yaml
+  - alertmanager/service.yaml
   - metrics-exporter/deployment.yaml
   - exporters/node-exporter.yaml
   - exporters/kube-state-metrics.yaml
   - gcp-exporter/deployment.yaml
   - gcp-exporter/service.yaml
+  - discord-relay/deployment.yaml
+  - discord-relay/service.yaml
 
 configMapGenerator:
   - name: grafana-dashboards
+    namespace: dev
     files:
       - grafana/dashboards/k8s-monitoring.json
+    options:
+      disableNameSuffixHash: true
+  - name: alertmanager-config
+    namespace: dev
+    files:
+      - alertmanager/alertmanager-config.yaml
+    options:
+      disableNameSuffixHash: true
+  - name: discord-relay-config
+    namespace: dev
+    literals:
+      - DISCORD_CRITICAL_URLS=${DISCORD_CRITICAL_URLS}
+      - DISCORD_WARNING_URLS=${DISCORD_WARNING_URLS}
+      - DISCORD_MAIN_URLS=${DISCORD_MAIN_URLS}
+      - DISCORD_PHONE_URL=${DISCORD_PHONE_URL}
     options:
       disableNameSuffixHash: true

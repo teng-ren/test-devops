@@ -1,0 +1,52 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 30s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'default-receiver'
+  routes:
+    # Heartbeat alerts -> both QA + Developer channels every 30m (info)
+    - match:
+        alertname: SystemHeartbeat
+      receiver: 'default-receiver'
+      repeat_interval: 30m
+      continue: false
+    # Critical alerts -> Developer + QA Discord + Phone Call (firing only)
+    - match:
+        severity: critical
+      receiver: 'discord-critical'
+      continue: true
+    # Phone call on critical (firing only, no resolved)
+    - match:
+        severity: critical
+      receiver: 'phone-call'
+      continue: false
+    # Warning alerts -> QA only
+    - match:
+        severity: warning
+      receiver: 'discord-warning'
+      continue: false
+
+receivers:
+  - name: 'default-receiver'
+    webhook_configs:
+      - url: 'http://discord-relay:8080/webhook/main'
+        send_resolved: true
+  
+  - name: 'discord-critical'
+    webhook_configs:
+      - url: 'http://discord-relay:8080/webhook/critical'
+        send_resolved: true
+  
+  - name: 'phone-call'
+    webhook_configs:
+      - url: 'http://discord-relay:8080/webhook/phone'
+        send_resolved: false
+  
+  - name: 'discord-warning'
+    webhook_configs:
+      - url: 'http://discord-relay:8080/webhook/warning'
+        send_resolved: true

@@ -21,7 +21,7 @@ jobs:
       - name: Notify Production Pipeline Start
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1460913645713359015/uHIWeLmLWV3Ct8qr6kgBRkX5DWxLUrtZTfEKwVl9Es1pefwlZ1yS5CcsEx6upATmiIyf
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
           status: ${{ job.status }}
           title: "🚀 Production Release Pipeline Started"
           description: |
@@ -46,7 +46,7 @@ jobs:
         if: always()
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1460913645713359015/uHIWeLmLWV3Ct8qr6kgBRkX5DWxLUrtZTfEKwVl9Es1pefwlZ1yS5CcsEx6upATmiIyf
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
           status: ${{ job.status }}
           title: "✅ Production Deployment Complete"
           description: |
@@ -63,7 +63,7 @@ jobs:
         if: always()
         uses: sarisia/actions-status-discord@v1
         with:
-          webhook: https://discord.com/api/webhooks/1462005434734088296/Q08EUcBqhdOy1-TSQY6KDq1u1cyRh617vffCYni6TXvG-IvxL96ltBZ0XcQzvKeUaWEN
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL_MGMT }}
           status: ${{ job.status }}
           title: "📊 Production Release Status"
           description: |

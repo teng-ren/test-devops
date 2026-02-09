@@ -1,0 +1,47 @@
+# Docker Compose override file for integration testing
+# This file overrides docker-compose.yml settings for testing purposes
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.test.yml up
+
+services:
+  # Expose database port for host-side integration tests
+  auth-db:
+    ports:
+      - "5432:5432"
+
+  # Expose chats database port for prompt-manager integration tests
+  chats_db:
+    ports:
+      - "5433:5432"
+
+  # Expose Pub/Sub emulator for prompt-manager integration tests
+  pubsub-emulator:
+    ports:
+      - "8085:8085"
+
+  # Expose mock LLM services for testing
+  gemma3:
+    ports:
+      - "8003:8000"
+
+  qwen3:
+    ports:
+      - "8004:8000"
+
+  # Expose auth service for prompt-manager tests
+  auth:
+    ports:
+      - "8001:8001"
+
+  # Expose prompt-manager service for integration tests
+  prompt-manager:
+    ports:
+      - "8002:8002"
+
+networks:
+  # Allow external access to auth network for integration testing
+  auth-network:
+    internal: false
+
+  # Allow external access to llm network for integration testing
+  llm-network:
+    internal: false

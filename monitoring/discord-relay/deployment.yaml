@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discord-relay
+  namespace: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discord-relay
+  template:
+    metadata:
+      labels:
+        app: discord-relay
+    spec:
+      containers:
+        - name: discord-relay
+          image: gcr.io/dop-assignment-team1/discord-relay:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DISCORD_CRITICAL_URLS
+              valueFrom:
+                configMapKeyRef:
+                  name: discord-relay-config
+                  key: DISCORD_CRITICAL_URLS
+            - name: DISCORD_WARNING_URLS
+              valueFrom:
+                configMapKeyRef:
+                  name: discord-relay-config
+                  key: DISCORD_WARNING_URLS
+            - name: DISCORD_MAIN_URLS
+              valueFrom:
+                configMapKeyRef:
+                  name: discord-relay-config
+                  key: DISCORD_MAIN_URLS
+            - name: DISCORD_PHONE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: discord-relay-config
+                  key: DISCORD_PHONE_URL
