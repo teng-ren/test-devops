@@ -1,489 +1,497 @@
-﻿# DevOps_Oct2025_Team1_Assignment
+# Monitoring Folder Documentation
 
-##  Project Overview
-
-This is a **complete cloud application system** that runs AI chatbots, manages user authentication, and monitors everything to keep the service running smoothly. Think of it as:
--  A platform where users can chat with AI
--  A security system that verifies who users are
--  A monitoring dashboard showing system health
--  An alert system that warns when something goes wrong
-
-The application is designed to run on **Kubernetes** (a container orchestration platform - essentially a smart machine manager) in **Google Cloud** (GCP).
+This folder contains the complete monitoring, alerting, and observability stack for the DevOps system.
 
 ---
 
-##  System Architecture
+## 📁 Folder Structure
 
-### **High-Level Overview**
-
-\\\
-
-                     USERS                               
-         (Web Browser or Mobile App)                     
-
-                 
-                 
-
-                    FRONTEND (Web UI)                    
-  React App - Beautiful interface for users to interact  
-           Deployed in Docker container                 
-
-                 
-                 
-
-              BACKEND API GATEWAY                        
-  Routes requests to the right microservices            
-
-         
-                                                 
-        
-      AUTH       PROMPT       LLM     MONITORING  
-    SERVICE     MANAGER     SERVICE    SYSTEM     
-        
-\\\
+```
+monitoring/
+├── kustomization.yaml          # Master config - deploys all monitoring components
+├── prometheus/                 # Time-series database for metrics
+├── grafana/                    # Dashboard visualization
+├── alertmanager/               # Alert routing engine
+├── discord-relay/              # Discord notification bridge
+├── metrics-exporter/           # Custom app metrics collector
+├── gcp-exporter/               # GCP Cloud Monitoring metrics collector
+└── exporters/                  # System-level metrics exporters
+```
 
 ---
 
-##  Main Components
+## 🎯 Root Level Files
 
-### **1. Frontend Application (\/app\)**
-**The interface users see and interact with**
-
-- **Technology**: React (JavaScript framework for building web interfaces)
+### **kustomization.yaml**
+- **Purpose**: Master configuration file that orchestrates all monitoring components
 - **What it does**:
-  - Provides a beautiful website/web app
-  - Users log in here
-  - Users chat with AI here
-  - Displays dashboards (for admin users)
-- **Files**:
-  - \src/\ - React components (building blocks of the interface)
-  - \Dockerfile\ - Recipe to package app in a container
-  - \package.json\ - List of software dependencies
-- **How it works**: Browser downloads the app, renders HTML/CSS/JavaScript that creates the interface
+  - Lists all YAML manifests to deploy in Kubernetes
+  - Generates ConfigMaps for Grafana dashboards and AlertManager config
+  - Injects environment variables for Discord relay
+  - Prevents hash suffixes on config names (keeps names stable)
+- **Key sections**:
+  - `resources`: Lists all manifests to apply
+  - `configMapGenerator`: Creates ConfigMaps from files and literals
+  - `DISCORD_*_URLS`: Environment variables for notification channels
+
+**Example resources deployed**:
+- Prometheus (serviceaccounts, configmap, pvc, deployment, services)
+- Grafana (deployment, dashboards)
+- AlertManager (deployment, service)
+- All exporters (metrics, gcp, node, kube-state)
+- Discord Relay (deployment, service)
 
 ---
 
-### **2. Backend Services (\/services\)**
-**The brain of the operation - these handle all the logic**
+## 📊 Prometheus (`/prometheus`)
 
-#### **2a. Authentication Service** (\uth.service/\)
-**Keeps users safe by verifying who they are**
+**Time-series database that stores all metrics over time**
 
-- **Purpose**: User login/registration, password security, token generation
-- **Database**: PostgreSQL (stores user accounts securely)
-- **Key features**:
-  - Hashes passwords (scrambles them so admins can't see them)
-  - Generates JWT tokens (digital ID cards that prove who the user is)
-  - Manages user roles (admin, user, etc.)
-- **Files**:
-  - \main.go\ - Entry point
-  - \uth-handlers.go\ - Login/register logic
-  - \dmin-handlers.go\ - Admin-only operations
-  - \db/\ - Database migration scripts
+### **Files**
 
-#### **2b. API Gateway** (\pi-gateway.service/\)
-**The traffic director - routes requests to the right service**
+#### **deployment.yaml**
+- **Kind**: Kubernetes Deployment
+- **Container**: `prom/prometheus:v2.48.0`
+- **Replicas**: 1 (single instance)
+- **CPU/Memory**:
+  - Request: 250m CPU, 512Mi RAM
+  - Limit: 1000m CPU, 2Gi RAM
+- **Key arguments**:
+  - `--config.file=/etc/prometheus/prometheus.yml` - Points to config file
+  - `--storage.tsdb.retention.time=7d` - Keeps 7 days of data
+  - `--web.enable-lifecycle` - Allows config reload without restart
+- **Port**: 9090
+- **Health check**: HTTP probe on `/-/healthy`
+- **Volumes**:
+  - `config`: ConfigMap with prometheus.yml
+  - `storage`: PVC for metric storage
+  - `rules`: Alert rules directory
 
-- **Purpose**: Acts like a reception desk, sends requests to correct departments
-- **Key features**:
-  - Validates incoming requests
-  - Checks authentication tokens
-  - Routes to appropriate service
-  - Handles load balancing if multiple services are running
-- **Language**: Go (fast, efficient)
+#### **configmap.yaml**
+- **Name**: `prometheus-config`
+- **Contains**: `prometheus.yml` configuration file
+- **Key settings**:
+  - `scrape_interval: 15s` - Collects metrics every 15 seconds
+  - `evaluation_interval: 10s` - Evaluates alert rules every 10 seconds
+  - `external_labels`: Tags metrics as `cluster: dev-cluster`, `environment: production`
+- **Scrape targets** (what gets monitored):
+  1. `kubernetes-apiservers` - Kubernetes API server
+  2. `kubernetes-nodes` - Worker nodes
+  3. `kubernetes-service-endpoints` - Services and pods
+  4. `kubernetes-pods` - Pod metrics
+  5. Custom jobs for internal services
+- **AlertManager integration**: Routes alerts to `alertmanager:9093`
 
-#### **2c. Prompt Manager Service** (\prompt-manager.service/\)
-**Manages AI conversation history and settings**
+#### **services.yaml**
+- **Kind**: Kubernetes Service
+- **Type**: ClusterIP (internal only)
+- **Port**: 9090
+- **Purpose**: Exposes Prometheus to other services internally
 
-- **Purpose**: Stores and retrieves chat conversations
-- **Database**: PostgreSQL
-- **Key features**:
-  - Creates new chat sessions
-  - Stores messages from both user and AI
-  - Publishes events to message queue (Pub/Sub)
-  - Tracks token usage (cost of running AI)
-- **Files**:
-  - \main.go\ - Entry point
-  - \handlers.go\ - HTTP endpoints (API methods)
-  - \models.go\ - Data structures
-  - \pubsub.go\ - Message publishing logic
-  - \worker.go\ - Background jobs
+#### **pvc.yaml**
+- **Kind**: PersistentVolumeClaim
+- **Size**: 10Gi (10 gigabytes)
+- **Access mode**: ReadWriteOnce (one pod can write)
+- **Purpose**: Stores time-series database files for Prometheus
+- **Retention**: Data kept for 7 days, then deleted
 
-#### **2d. LLM Service** (\llm.service/\)
-**Communicates with AI models**
+#### **serviceaccounts.yaml**
+- **ServiceAccount**: `prometheus`
+- **RBAC Rules**: Permissions to read:
+  - Pods, nodes, endpoints, services
+  - Node proxy metrics
+  - Service metrics
+- **Purpose**: Allows Prometheus to discover and scrape Kubernetes resources
 
-- **Purpose**: Sends prompts to AI models (Gemma3, Qwen3) and gets responses
-- **Key features**:
-  - Accepts prompts from Prompt Manager
-  - Calls LLM (Large Language Model) APIs
-  - Returns generated text
-  - Streams responses back
+#### **local/**
+**Alert rules for firing alerts**
+- Contains `.yml` files with conditions like:
+  - High CPU usage (>80%)
+  - High memory usage (>85%)
+  - Service unreachable
+  - Error rate too high
 
 ---
 
-### **3. Monitoring & Observability (\/monitoring\)**
-**Watches the entire system and alerts when problems occur**
+## 📈 Grafana (`/grafana`)
 
-#### **Core Monitoring Stack**
+**Beautiful dashboard for visualizing monitoring data**
 
-**Prometheus** (\prometheus/\)
-- **What**: Time-series database that stores metrics (numbers over time)
-- **Purpose**: Collects health data from all services
-- **Metrics collected**:
-  - CPU usage (how hard the server is working)
-  - Memory usage (RAM being used)
-  - HTTP requests (how many API calls)
-  - Database connections
-- **Data retention**: 7 days of historical data
-- **Files**:
-  - \configmap.yaml\ - Configuration for scraping targets
-  - \deployment.yaml\ - Kubernetes deployment instructions
-  - \local/\ - Alert rules (conditions for firing alerts)
+### **Files**
 
-**Grafana** (\grafana/\)
-- **What**: Beautiful dashboard to visualize data
-- **Purpose**: Displays metrics and system health in charts/graphs
-- **Features**:
-  - Real-time graphs of CPU, memory, requests
-  - Pre-built dashboards for Kubernetes and GKE
-  - Connected to 3 data sources:
-    1. Local Prometheus (your application metrics)
-    2. Google Cloud Monitoring (GCP infrastructure)
-    3. Google Cloud Logging (Application logs)
-- **Access**: Open web browser to see dashboards
+#### **deployment.yaml**
+- **Container**: Official Grafana image
+- **Replicas**: 1
+- **Key features**:
+  - **Data Sources** configured in ConfigMap:
+    1. **Prometheus** (http://prometheus:9090)
+    2. **Google Cloud Monitoring** (StackDriver - queries GCP metrics)
+    3. **Google Cloud Logging** (StackDriver - queries GCP logs)
+  - **Dashboard provisioning**: Auto-loads dashboards from mounted ConfigMaps
+  - **Admin credentials**: `admin:admin` (default)
+- **Port**: 3000
+- **Environment variables**: Database URL, security settings
+- **Volumes**: Dashboards ConfigMap mounted
 
-**AlertManager** (\lertmanager/\)
-- **What**: Intelligent alert routing system
-- **Purpose**: Decides what alert to send where based on severity
-- **Routing logic**:
-  - **Critical alerts**  Discord (dev team) + Phone call
-  - **Warning alerts**  Discord (QA team)
-  - **Heartbeat**  Main channel (every 30 min, proves system is alive)
-- **Features**:
-  - Groups similar alerts
-  - Prevents alert bombardment
-  - Escalates critical issues
+#### **dashboards/**
 
-**Discord Relay** (\discord-relay/\)
-- **What**: Bridge between AlertManager and Discord
-- **Purpose**: Converts alerts into Discord messages and forwards them
-- **Features**:
-  - Formats alerts with color codes (red = critical, yellow = warning)
-  - Sends to different Discord channels
-  - Can trigger phone calls for critical issues
-  - Includes relevant details (server name, error message)
+##### **k8s-monitoring.json**
+- **Name**: Kubernetes Monitoring Dashboard
+- **Purpose**: Shows cluster health
+- **Visualizations** include:
+  - CPU usage by node
+  - Memory usage by pod
+  - Network I/O
+  - Pod status
+  - Deployment health
 
-#### **Data Collection (Exporters)**
-
-**Metrics Exporter** (\metrics-exporter/\)
-- **What**: Custom app that gathers application-specific metrics
-- **Data collected**:
-  - HTTP request counts and latencies
-  - Authentication failure rates
-  - Message queue depth
-  - Database connection pool usage
-  - Token consumption
-- **How**: Queries your databases and exposes metrics in Prometheus format
-
-**GCP Exporter** (\gcp-exporter/\)
-- **What**: Custom app that pulls metrics from Google Cloud
-- **Data collected**:
-  - Kubernetes node CPU/memory/disk usage
+##### **gke-dashboard.json**
+- **Name**: GKE-Specific Dashboard
+- **Purpose**: Google Kubernetes Engine specific metrics
+- **Data from**: Google Cloud Monitoring API
+- **Visualizations** include:
+  - GKE node metrics
   - Container resource usage
-  - Pod network I/O
-  - GKE cluster health
-- **How**: Uses Google Cloud Monitoring API
-
-**System Exporters** (\exporters/\)
-- **Node Exporter**: Collects machine-level metrics (CPU, disk, network)
-- **Kube-State Metrics**: Kubernetes cluster status (pod count, deployment health)
+  - Pod network metrics
+  - Cluster health summary
 
 ---
 
-### **4. Container Orchestration & Local Setup**
+## 🚨 AlertManager (`/alertmanager`)
 
-#### **Docker** (\Dockerfile\)
-- **What**: Technology that packages applications into "containers"
-- **Purpose**: Ensures app works the same everywhere (laptop, cloud, CI/CD)
-- **How**: Creates a box with app + all dependencies
-- **Benefits**: "Works on my machine" problem solved!
+**Intelligent alert routing and grouping**
 
-#### **Kubernetes** (K8s) - Production
-- **What**: Container orchestration system
-- **Purpose**: Manages, scales, and heals containerized applications
-- **Key features**:
-  - Auto-restarts failed services
-  - Scales services up/down based on demand
-  - Load balances traffic
-  - Handles storage and networking
-- **Files**: Various \.yaml\ files defining deployments
+### **Files**
 
-#### **Docker Compose** - Local Development
-- **What**: Tool to run multiple containers locally
-- **Purpose**: Simulate full stack on your laptop
-- **Files**:
-  - \docker-compose.yml\ - Production-like setup
-  - \docker-compose.test.yml\ - For running tests
+#### **alertmanager-config.yaml**
+- **Purpose**: Defines how alerts are routed to notification channels
+- **Global settings**:
+  - `resolve_timeout: 5m` - How long to wait before resolving alerts
+- **Alert routing rules** (hierarchical):
+  1. **Heartbeat alerts** → Main Discord channel (every 30 min)
+  2. **Critical severity** → Discord (critical) + Phone call
+  3. **Warning severity** → Discord (QA channel)
+  4. **Default** → Default receiver
+- **Features**:
+  - `group_by`: Groups alerts by alertname, cluster, service
+  - `group_wait: 30s`: Waits 30s before sending first alert (batches them)
+  - `group_interval: 10s`: Waits 10s between sending grouped alerts
+  - `repeat_interval: 12h`: Resends unresolved alerts every 12 hours
+  - `continue: true/false`: Whether to continue to next route rule
 
-#### **Kubernetes Local Setup** (\k8s-local/\)
-- **Mock LLM Service**: Simulates AI model for local development
-- **Pub/Sub Emulator**: Simulates Google Cloud Pub/Sub for messages
-- **Allows**: Testing without connecting to real GCP
+#### **deployment.yaml**
+- **Container**: `prom/alertmanager:latest`
+- **Replicas**: 1
+- **Port**: 9093
+- **Config mounted**: AlertManager configuration from ConfigMap
+- **Data volume**: Stores alert state
 
----
-
-##  Data Flow - How Everything Works Together
-
-### **User Login Flow**
-\\\
-User types username/password in frontend
-        
-Frontend sends to API Gateway
-        
-API Gateway routes to Auth Service
-        
-Auth Service checks database
-        
-Auth Service returns JWT token (digital ID)
-        
-Frontend stores token and shows dashboard
-\\\
-
-### **User Sends Chat Message Flow**
-\\\
-User types message in chat interface
-        
-Frontend sends to API Gateway + JWT token
-        
-API Gateway validates token with Auth Service
-        
-Routes to Prompt Manager Service
-        
-Prompt Manager stores message in database
-        
-Publishes "new message" event to Pub/Sub queue
-        
-LLM Service picks up event from queue
-        
-LLM Service calls AI model API (Gemma3/Qwen3)
-        
-AI model returns response
-        
-LLM Service stores response in database
-        
-Frontend polls or receives response (WebSocket)
-        
-User sees AI's answer
-\\\
-
-### **Monitoring & Alerting Flow**
-\\\
-All Services expose metrics (CPU, requests, errors)
-        
-Prometheus scrapes metrics every 15 seconds
-        
-Prometheus stores in time-series database
-        
-AlertManager evaluates alert rules:
-  - Is CPU > 80%?
-  - Are errors > threshold?
-  - Is service down?
-        
-If alert triggered:
-  - If CRITICAL  AlertManager sends to Discord Relay
-  - Discord Relay posts to Discord channels
-  - Discord Relay calls phone system
-        
-Team gets notified immediately
-        
-Team logs into Grafana dashboard to investigate
-        
-Sees graphs of what happened
-\\\
+#### **service.yaml**
+- **Type**: ClusterIP
+- **Port**: 9093
+- **Purpose**: Internal service for AlertManager access
 
 ---
 
-##  Deployment Architecture
+## 📱 Discord Relay (`/discord-relay`)
 
-### **Development Environment**
-- Run locally with Docker Compose
-- Uses mock LLM and Pub/Sub
-- Database: PostgreSQL containers
+**Converts alerts to Discord messages and triggers phone calls**
 
-### **Google Kubernetes Engine (GKE)**
-- **What**: Google's managed Kubernetes service
-- **How it works**:
-  1. Code pushed to GitHub
-  2. Cloud Build automatically builds Docker images
-  3. Images pushed to Google Container Registry
-  4. Deployed to GKE cluster
-  5. Kustomize applies configuration
-- **Auto-scaling**: Services scale based on CPU/memory usage
-- **Load Balancing**: Traffic distributed across replicas
+### **Files**
 
-### **GCP Services Used**
-- **Kubernetes Engine (GKE)**: Runs containers
-- **Cloud Pub/Sub**: Message queue for async processing
-- **Cloud SQL**: Managed PostgreSQL database
-- **Cloud Monitoring**: Infrastructure metrics
-- **Cloud Logging**: Application logs
-- **Container Registry**: Image storage
-- **Cloud Build**: CI/CD pipeline
+#### **main.go**
+- **Language**: Go
+- **Port**: 8080
+- **Purpose**: Acts as webhook receiver from AlertManager
+- **Key functions**:
+  - Receives AlertManager webhook payloads
+  - Converts alert JSON to Discord embeds (formatted messages)
+  - Routes to different Discord channels based on severity
+  - Can trigger phone calls for critical alerts
+- **Endpoints**:
+  - `/webhook/main` - General/heartbeat alerts
+  - `/webhook/critical` - Critical incidents
+  - `/webhook/warning` - Warning-level alerts
+  - `/webhook/phone` - Triggers phone calls
+- **Environment variables**:
+  - `DISCORD_CRITICAL_URLS`: Webhook URLs for critical channel
+  - `DISCORD_WARNING_URLS`: Webhook URLs for warning channel
+  - `DISCORD_MAIN_URLS`: Webhook URLs for main channel
+  - `DISCORD_PHONE_URL`: Webhook URL for phone integration
 
----
+#### **Dockerfile**
+- **Build stage**: Compiles Go code to binary
+- **Runtime stage**: Alpine Linux (small, minimal)
+- **User**: Runs as non-root `appuser` (security)
+- **Output**: Executable `/app/discord-relay`
 
-##  Monitoring & Alerts in Plain English
+#### **deployment.yaml**
+- **Container**: discord-relay:latest
+- **Replicas**: 1
+- **Environment** variables injected from ConfigMap
+- **Port**: 8080
 
-### **What Gets Monitored**
--  Server CPU usage (is it overworked?)
--  Memory usage (is storage full?)
--  HTTP request count (how much traffic?)
--  Request latency (are responses slow?)
--  Error rates (are services failing?)
--  Database connections (is database healthy?)
--  Queue depth (are messages backing up?)
--  Authentication failures (are there attacks?)
--  AI token consumption (are we spending money fast?)
-
-### **Alert Severities**
--  **CRITICAL**: Service down, database unreachable  Phone call + Discord
--  **WARNING**: High error rate, slow responses  Discord notification
--  **INFO**: Heartbeat, regular updates  Quiet logging
+#### **service.yaml**
+- **Type**: ClusterIP
+- **Port**: 8080
+- **Purpose**: Internal service for AlertManager to call
 
 ---
 
-##  Local Development
+## 📊 Metrics Exporter (`/metrics-exporter`)
 
-### **Quick Start**
-\\\ash
-# Clone repo
-git clone <repo-url>
-cd test
+**Collects custom application metrics**
 
-# Start services with Docker Compose
-docker-compose up
+### **Files**
 
-# Services available at:
-# - Frontend: http://localhost:3000
-# - API Gateway: http://localhost:8000
-# - Prometheus: http://localhost:9090
-# - Grafana: http://localhost:3001 (admin/admin)
-\\\
+#### **main.go**
+- **Language**: Go
+- **Purpose**: Custom metrics collector for your applications
+- **Port**: 8080
+- **Metrics collected**:
+  - **HTTP metrics**:
+    - `http_requests_total` - Total requests by service/method/status
+    - `http_request_duration_seconds` - Request latency histogram
+  - **Auth metrics**:
+    - `auth_failures` - Recent auth failures in last 5 minutes
+  - **Queue metrics**:
+    - `messages_in_queue` - Current messages in Pub/Sub
+  - **Database metrics**:
+    - Connection pool usage
+    - Query latencies
+  - **AI metrics**:
+    - Tokens consumed
+    - Model usage rates
+- **Queries**: Connects to PostgreSQL to fetch real data
+- **Exports**: Exposes metrics on `/metrics` endpoint in Prometheus format
 
-### **Files Structure Explained**
-\\\
-test/
- app/                    # React frontend + Vite build config
- services/              # Go microservices
-    auth.service/      # User authentication
-    api-gateway.service/   # Request router
-    prompt-manager.service/   # Chat/prompt storage
-    llm.service/       # AI model integration
- monitoring/            # Prometheus, Grafana, Alerts
-    prometheus/        # Metrics database
-    grafana/           # Dashboards
-    alertmanager/      # Alert routing
-    discord-relay/     # Notification bridge
-    metrics-exporter/  # App metrics collection
-    gcp-exporter/      # GCP metrics collection
-    exporters/         # System metrics
- k8s-local/             # Local Kubernetes config for testing
- docker-compose.yml     # Production-like local setup
- docker-compose.test.yml # Testing setup
-\\\
+#### **deployment.yaml**
+- Container running metrics exporter
+- Connects to PostgreSQL databases
+- Port 8080
 
----
+#### **Dockerfile**
+- Build: Compiles Go app
+- Runtime: Alpine Linux
+- Non-root user
 
-##  Key Technologies Explained for Beginners
-
-| Technology | What It Is | Why We Use It |
-|-----------|-----------|---------------|
-| **React** | JavaScript library for building web interfaces | Create beautiful, interactive websites |
-| **Go** | Fast programming language | Backend services run quickly, handle many requests |
-| **PostgreSQL** | Database for storing structured data | Reliable, proven, excellent for applications |
-| **Kubernetes** | Container orchestration platform | Manage hundreds of containers automatically |
-| **Docker** | Containerization platform | Package apps to work anywhere |
-| **Prometheus** | Time-series database | Store metrics over time for trend analysis |
-| **Grafana** | Data visualization tool | Create beautiful charts and dashboards |
-| **AlertManager** | Alert management system | Route alerts intelligently based on rules |
-| **Pub/Sub** | Message queue system | Decouple services, handle async processing |
-| **GCP** | Google Cloud Platform | Reliable cloud infrastructure |
+#### **go.mod**
+- Dependencies:
+  - PostgreSQL driver (`lib/pq`)
+  - Prometheus client library
+  - Database/sql standard library
 
 ---
 
-##  Security Features
+## ☁️ GCP Exporter (`/gcp-exporter`)
 
-- **Password Hashing**: Passwords never stored in plain text
-- **JWT Tokens**: Stateless authentication system
-- **HTTPS/TLS**: Encrypted communication between services
-- **RBAC**: Role-based access control (admin, user, guest)
-- **Service Accounts**: Services authenticate to each other securely
-- **Network Policies**: Kubernetes restricts service-to-service communication
+**Pulls metrics from Google Cloud Platform**
 
----
+### **Files**
 
-##  Scalability
+#### **main.go**
+- **Language**: Go
+- **Purpose**: Queries Google Cloud Monitoring API
+- **Metrics collected**:
+  - **GKE Node metrics**:
+    - `gke_node_cpu_utilization` - Node CPU %
+    - `gke_node_memory_utilization` - Node memory %
+    - `gke_node_disk_utilization` - Node disk %
+  - **Container metrics**:
+    - `gke_container_cpu_usage_seconds` - CPU time used
+    - Container memory usage
+  - **Pod metrics**:
+    - Network I/O (bytes sent/received)
+    - Pod status
+  - **Cluster metrics**:
+    - Overall health
+    - Available resources
+- **GCP API**: Uses `cloud.google.com/go/monitoring` SDK
+- **Authentication**: Uses service account credentials (JSON key file)
+- **Purpose**: Bridge between GCP infrastructure and Prometheus
 
-- **Horizontal Scaling**: Add more pods (containers) when traffic increases
-- **Load Balancing**: Traffic distributed across multiple instances
-- **Database Scaling**: Cloud SQL handles read replicas
-- **Auto-scaling Rules**: Metrics-based scaling (CPU/memory thresholds)
-- **Caching**: Reduce database queries
-- **Rate Limiting**: Prevent abuse
+#### **deployment.yaml**
+- Container with GCP exporter
+- Mounts GCP service account key file
+- Port 8080
 
----
+#### **Dockerfile**
+- Multi-stage build
+- Final image: Alpine Linux
+- Non-root user
 
-##  Troubleshooting Guide
+#### **go.mod**
+- Dependencies:
+  - Google Cloud monitoring library
+  - Prometheus client library
+  - gRPC and Protocol Buffers
 
-### **Service Not Responding**
-1. Check Prometheus - is container running?
-2. Check logs in Grafana/Cloud Logging
-3. Check network policies and firewalls
+#### **docker-compose.yml**
+- Local development setup for GCP exporter
 
-### **High Error Rate**
-1. Check AlertManager alerts
-2. Look at Grafana dashboards
-3. Check service logs
-4. Verify database connectivity
+#### **cloudbuild.yaml**
+- CI/CD configuration for Google Cloud Build
+- Builds and pushes image to Container Registry
 
-### **Slow Requests**
-1. Check CPU/memory usage
-2. Run database query analysis
-3. Check network latency
-4. Review application logs
-
----
-
-##  Learning Resources
-
-- **Kubernetes Basics**: https://kubernetes.io/docs/tutorials/
-- **Docker Concepts**: https://docs.docker.com/get-started/
-- **Prometheus Metrics**: https://prometheus.io/docs/
-- **Grafana Dashboards**: https://grafana.com/docs/
-- **Google Cloud**: https://cloud.google.com/docs
-
----
-
-##  Team & Support
-
-This project was created by Team 1 as part of the DevOps assignment (October 2025).
-
-For questions or issues:
-1. Check the monitoring dashboards (Prometheus/Grafana)
-2. Review the alert messages in Discord
-3. Check service logs
-4. Review code documentation in individual services
+#### **setup.sh** / **setup.ps1**
+- Bash/PowerShell scripts for initial setup
+- Creates service account
+- Sets up authentication
+- Configures permissions
 
 ---
 
-##  Summary
+## 🖥️ System Exporters (`/exporters`)
 
-This is a **complete, production-ready AI chat application** with:
--  Secure user authentication
--  AI-powered chat interface
--  Real-time monitoring of all components
--  Intelligent alerting system
--  Beautiful dashboards for understanding system health
--  Automatic scaling and self-healing
+**Collect infrastructure and Kubernetes metrics**
 
-Everything works together in a **microservices architecture**, where each component has a specific job, making the system scalable, reliable, and easy to maintain.
+### **node-exporter.yaml**
+- **Purpose**: Collects machine-level metrics from Kubernetes nodes
+- **Metrics**:
+  - CPU usage, temperature
+  - Memory usage, page faults
+  - Disk I/O, space usage
+  - Network interface metrics
+  - System uptime
+- **Type**: DaemonSet (runs on every node)
+- **RBAC**: ServiceAccount with permissions to read node data
+
+### **kube-state-metrics.yaml**
+- **Purpose**: Exports Kubernetes object metrics
+- **Metrics**:
+  - Pod status (running, pending, failed)
+  - Deployment replicas (desired vs actual)
+  - StatefulSet status
+  - DaemonSet coverage
+  - Job completion rates
+  - PVC capacity
+- **Type**: Deployment
+- **RBAC**: Reads Kubernetes API objects
+
+---
+
+## 🔄 Data Flow
+
+```
+┌─────────────────────────────────────────────────┐
+│         Application Services                    │
+│  (Auth, Prompt Manager, API Gateway, etc)      │
+└────────────┬────────────────────────────────────┘
+             │ Expose /metrics endpoint
+             ▼
+┌─────────────────────────────────────────────────┐
+│         System Exporters                        │
+│  (Node Exporter, Kube-State Metrics)           │
+└────────────┬────────────────────────────────────┘
+             │
+      ┌──────┴──────┐
+      │             │
+      ▼             ▼
+┌──────────────┐  ┌──────────────────┐
+│ Metrics      │  │ GCP Exporter     │
+│ Exporter     │  │ (Cloud Monitoring)
+└──────┬───────┘  └───────┬──────────┘
+       │                  │
+       └──────────┬───────┘
+                  ▼
+          ┌────────────────┐
+          │  PROMETHEUS    │ (Every 15 seconds)
+          │  (Time DB)     │
+          └────────┬───────┘
+                   │
+      ┌────────────┼────────────┐
+      ▼            ▼            ▼
+ ┌─────────┐  ┌──────────┐  ┌────────────┐
+ │ GRAFANA │  │ ALERT    │  │ Prometheus│
+ │(Dashb.)│  │ RULES    │  │ Queries   │
+ └────────┘  └────┬─────┘  └──────────┘
+                  │
+       ┌──────────▼──────────┐
+       │   ALERTMANAGER     │
+       │   (Route Alerts)   │
+       └──────────┬─────────┘
+             ┌────┴────┐
+             ▼         ▼
+      ┌──────────────┐ ┌──────────────┐
+      │  Discord     │ │ Phone Call   │
+      │  Relay       │ │ System       │
+      └──────────────┘ └──────────────┘
+             │                │
+             └────────┬───────┘
+                      ▼
+              Team Notifications
+```
+
+---
+
+## 🚀 Deployment
+
+All components deploy together via:
+```bash
+kubectl kustomize monitoring/ | kubectl apply -f -
+```
+
+This applies the `kustomization.yaml` which:
+1. Creates namespace `dev`
+2. Deploys Prometheus + config + storage
+3. Deploys Grafana + datasources + dashboards
+4. Deploys AlertManager + rules
+5. Deploys Discord Relay
+6. Deploys all exporters
+7. Injects environment variables (Discord URLs, etc.)
+
+---
+
+## 📝 Configuration Files Summary
+
+| File | Type | Purpose |
+|------|------|---------|
+| `prometheus/configmap.yaml` | ConfigMap | Prometheus scrape targets & alert rules |
+| `prometheus/deployment.yaml` | Deployment | Prometheus container & resources |
+| `prometheus/pvc.yaml` | PVC | 10GB storage for metrics |
+| `alertmanager/alertmanager-config.yaml` | ConfigMap | Alert routing rules |
+| `grafana/deployment.yaml` | Deployment | Grafana with 3 datasources |
+| `grafana/dashboards/*` | JSON | Pre-built visualization dashboards |
+| `discord-relay/main.go` | Go Code | Alert to Discord conversion |
+| `metrics-exporter/main.go` | Go Code | Custom app metrics collection |
+| `gcp-exporter/main.go` | Go Code | GCP metrics collection |
+| `exporters/*.yaml` | DaemonSet/Deployment | System metrics collection |
+
+---
+
+## 🔧 Common Operations
+
+### View Prometheus UI
+```
+kubectl port-forward -n dev svc/prometheus 9090:9090
+# Open: http://localhost:9090
+```
+
+### View Grafana Dashboards
+```
+kubectl port-forward -n dev svc/grafana 3000:3000
+# Open: http://localhost:3000 (admin/admin)
+```
+
+### View AlertManager
+```
+kubectl port-forward -n dev svc/alertmanager 9093:9093
+# Open: http://localhost:9093
+```
+
+### Query Prometheus Metrics
+```bash
+# Via port-forward to http://localhost:9090/api/v1/query
+# Example: http_requests_total{service="auth"}
+```
+
+---
+
+## ⚙️ Key Metrics Explained
+
+- **CPU**: Measured in millicores (m) - 1000m = 1 core
+- **Memory**: Measured in Mi (mebibytes) or Gi (gibibytes)
+- **Requests**: Total count by endpoint
+- **Latency**: Response time in seconds
+- **Error rate**: Failed requests percentage
+- **Uptime**: Service availability time
